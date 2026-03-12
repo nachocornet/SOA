@@ -1,0 +1,18 @@
+cat << 'EOF' > .gitignore
+# Ignorar archivos de estado de la Máquina Virtual
+.vagrant/
+
+# Ignorar archivos compilados de ZeOS
+*.o
+*.out
+*.bin
+system
+user
+
+# Ignorar logs del emulador
+bochsout.txt
+
+# Ignorar archivos comprimidos
+*.tar.gz
+*.zip
+EOF
