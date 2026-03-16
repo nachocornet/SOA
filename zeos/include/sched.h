@@ -10,12 +10,16 @@
 #include <mm_address.h>
 
 #define KERNEL_STACK_SIZE	1024
+#define NR_TASKS		10
 
 enum state_t { ST_RUN, ST_READY, ST_BLOCKED };
 
 struct task_struct {
   int PID;			/* Process ID. This MUST be the first field of the struct. */
   page_table_entry * dir_pages_baseAddr;
+
+  struct list_head list;
+  int kernel_esp;
 };
 
 union task_union {
@@ -29,6 +33,12 @@ union task_union {
 extern char initial_stack[KERNEL_STACK_SIZE];
 #define INITIAL_ESP             (DWord) &initial_stack[KERNEL_STACK_SIZE]
 
+extern union task_union task[NR_TASKS];
+extern struct list_head readyqueue;
+extern struct list_head freequeue;
+extern struct task_struct *idle_task;
+extern struct task_struct *init_task;
+
 /* Inicialitza les dades del proces inicial */
 void init_task1(void);
 
@@ -41,5 +51,7 @@ struct task_struct * current();
 page_table_entry * get_PT (struct task_struct *t) ;
 
 page_table_entry * get_DIR (struct task_struct *t) ;
+
+struct task_struct * list_head_to_task_struct(struct list_head *l);
 
 #endif  /* __SCHED_H__ */

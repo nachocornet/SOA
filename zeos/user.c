@@ -12,13 +12,7 @@ int __attribute__ ((__section__(".text.main")))
 {
     /* Next line, tries to move value 0 to CR3 register. This register is a privileged one, and so it will raise an exception */
      /* __asm__ __volatile__ ("mov %0, %%cr3"::"r" (0) ); */
-  int resultado = write(1, "Este write va a dar error porque el tamaño es negativo\n", -10);
 
-    if (resultado < 0) {
-        perror(); 
-    } else {
-        write(1, "Escritura correcta\n", 19);
-    }
 
 
     int tiempo_incial = gettime();
@@ -39,7 +33,14 @@ int __attribute__ ((__section__(".text.main")))
     }
   }
 
-  write(1, "Ahora va a haber una fallo de página porque se va a acceder a una dirección no mapeada\n", 92);
-  int *ptr = (int *)0x0;
-  int valor = *ptr;
+  /* make sure main does not return.  In this tiny OS the kernel
+     does not set up a return address for the first user function, so
+     falling off the end of main will pop a garbage value and jump
+     somewhere inside the image (0xEBFE is a repeat of "jmp -2"!) which
+     triggers the invalid‑opcode fault you were seeing.  Instead of
+     returning we simply spin forever or you can explicitly call a
+     termination syscall if one is provided by your kernel. */
+
+  /* never return from user code */
+  for (;;) write(1, "Looping forever...\n", 19);
 }

@@ -26,22 +26,26 @@ int check_fd(int fd, int permissions)
 
 int sys_ni_syscall()
 {
-	return -38; /*ENOSYS*/
+    return -38; /*ENOSYS*/
 }
 
 #include <io.h>
 #include <system.h> 
 
+static char sys_buffer[256]; 
+
 int sys_write(int fd, char *buffer, int size) {
     int error;
-    char sys_buffer[256]; 
     int bytes_left = size;
     int bytes_written = 0;
 
     error = check_fd(fd, ESCRIPTURA); 
     if (error < 0) return error; 
-    if (buffer == 0) return -14; 
+
     if (size < 0) return -22;    
+    if (size == 0) return 0;
+    
+    if (buffer == NULL) return -14; 
     error = access_ok(ESCRIPTURA, buffer, size);
     if (error < 0) return error;
 
