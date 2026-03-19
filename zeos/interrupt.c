@@ -78,6 +78,8 @@ void setTrapHandler(int vector, void (*handler)(), int maxAccessibleFromPL)
 extern void clock_handler();
 extern void keyboard_handler();
 extern void custom_page_fault_handler();
+extern void task_switch(union task_union *new);
+extern struct task_struct *idle_task;
 
 void setIdt()
 {
@@ -121,6 +123,9 @@ void keyboard_routine() {
             printc_xy(0, 0, char_to_print);
         }
     }
+    printk("\nCambiando de proceso...\n");
+    task_switch((union task_union *)idle_task);
+    printk("\nProceso cambiado.\n");
 }
 
 void custom_page_fault_routine(unsigned int error, unsigned int eip) {

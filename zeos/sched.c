@@ -36,6 +36,12 @@ void init_idle (void)
 	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
 	clear_page_table(DirAddress);
 
+	DirAddress[0].entry = 0;
+	DirAddress[0].bits.pbase_addr = PT_system;
+	DirAddress[0].bits.rw = 1;
+	DirAddress[0].bits.present = 1;
+	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
+
 	// 4)
 	struct list_head *first = list_first(&freequeue);
 	list_del(first);
@@ -132,10 +138,6 @@ void init_task1(void)
 
 	// 8)
 	init_task = t;
-
-
-
-
 }
 
 
@@ -151,6 +153,52 @@ void init_sched()
         list_add_tail(&(task[i].task.list), &freequeue);
     }
 }
+
+void task_switch(union task_union *new) {
+	// 1)
+	__asm__ __volatile__(
+		"pushl %esi\n\t"
+		"pushl %edi\n\t"
+		"pushl %ebx\n\t"
+	);
+
+	// 2)
+	inner_task_switch(new);
+
+	// 3)
+	__asm__ __volatile__(
+		"popl %ebx\n\t"
+		"popl %edi\n\t"
+		"popl %esi\n\t"
+	);
+}
+
+void inner_task_switch(union task_union *new) {
+	// 1)
+	tss.esp0 = (DWord) &(new->stack[KERNEL_STACK_SIZE]); // KERNEL_STACK_SIZE --> new->kernel_esp
+	writeMSR(0x175, (DWord) &(new->stack[KERNEL_STACK_SIZE]));
+
+	// 2)
+	set_cr3(new->task.dir_pages_baseAddr);
+
+	unsigned int *old_esp = (unsigned int*) &(current()->kernel_esp);
+	unsigned int new_esp = new->task.kernel_esp;
+
+	
+	__asm__ __volatile__(
+		"movl %%ebp, %0\n\t"
+
+		"movl %1, %%esp\n\t"
+
+		"popl %%ebp\n\t"
+
+		"ret\n\t"
+		: 
+		: "r" (*old_esp), "r" (new_esp)
+	);
+
+}
+
 
 /* get_DIR - Returns the Page Directory address for task 't' */
 page_table_entry * get_DIR (struct task_struct *t)

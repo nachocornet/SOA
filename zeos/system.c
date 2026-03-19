@@ -64,10 +64,10 @@ int __attribute__((__section__(".text.main")))
   /* Initialize Scheduling */
   init_sched();
 
-  /* Initialize idle task  data */
-  init_idle();
   /* Initialize task 1 data */
   init_task1();
+  /* Initialize idle task  data */
+  init_idle();
 
   /* Move user code/data now (after the page table initialization) */
   copy_data((void *) KERNEL_START + *p_sys_size, (void*)L_USER_START, *p_usr_size);

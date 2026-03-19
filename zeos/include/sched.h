@@ -48,6 +48,10 @@ void init_sched(void);
 
 struct task_struct * current();
 
+void task_switch(union task_union *new);
+
+void inner_task_switch(union task_union *new);
+
 page_table_entry * get_PT (struct task_struct *t) ;
 
 page_table_entry * get_DIR (struct task_struct *t) ;

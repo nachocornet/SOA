@@ -42,5 +42,5 @@ int __attribute__ ((__section__(".text.main")))
      termination syscall if one is provided by your kernel. */
 
   /* never return from user code */
-  for (;;) write(1, "Looping forever...\n", 19);
+  for(;;) {}
 }
