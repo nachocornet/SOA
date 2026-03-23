@@ -16,6 +16,9 @@ void perror(void) {
         case 9:  // EBADF
             error_msg = "Bad file descriptor"; 
             break;
+        case 12:
+            error_msg = "Out of memory"; 
+            break;
         case 14: // EFAULT
             error_msg = "Bad address (Puntero nulo o invalido)"; 
             break;

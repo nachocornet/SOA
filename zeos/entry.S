@@ -99,12 +99,16 @@ ENTRY(syscall_handler_sysenter)
       jg sysenter_err
       call *sys_call_table(, %EAX, 0x04)
       jmp sysenter_fin
-      sysenter_err:
+sysenter_err:
       movl $-38, %EAX
-      sysenter_fin:
+sysenter_fin:
       movl %EAX, 0x18(%ESP)
       RESTORE_ALL
       movl (%ESP), %EDX // Return address
       movl 12(%ESP), %ECX // User stack address
       sti // Enable interrupts again
       sysexit
+
+ENTRY(ret_from_fork)
+      movl $0, %eax
+      jmp sysenter_fin

@@ -17,4 +17,8 @@ int write(int fd, char *buffer, int size);
 
 int gettime(void);
 
+int getpid(void);
+
+int fork(void);
+
 #endif  /* __LIBC_H__ */

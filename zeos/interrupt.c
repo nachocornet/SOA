@@ -80,6 +80,7 @@ extern void keyboard_handler();
 extern void custom_page_fault_handler();
 extern void task_switch(union task_union *new);
 extern struct task_struct *idle_task;
+extern struct task_struct *init_task;
 
 void setIdt()
 {
@@ -122,10 +123,16 @@ void keyboard_routine() {
         } else {
             printc_xy(0, 0, char_to_print);
         }
+        printk("\nCambiando de proceso...\n");
+        if(current() != idle_task) {
+            task_switch((union task_union *)idle_task);
+            printk("Proceso cambiado a idle_task.\n");
+        } else {
+            task_switch((union task_union *)init_task);
+            printk("Proceso cambiado a init_task.\n");
+        }
+
     }
-    printk("\nCambiando de proceso...\n");
-    task_switch((union task_union *)idle_task);
-    printk("\nProceso cambiado.\n");
 }
 
 void custom_page_fault_routine(unsigned int error, unsigned int eip) {

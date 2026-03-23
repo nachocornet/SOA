@@ -40,6 +40,8 @@ extern struct task_struct *idle_task;
 extern struct task_struct *init_task;
 
 /* Inicialitza les dades del proces inicial */
+void allocate_DIR(struct task_struct *t);
+
 void init_task1(void);
 
 void init_idle(void);

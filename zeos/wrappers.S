@@ -73,3 +73,73 @@ return_from_gettime:
     
     popl %ebp
     ret
+
+
+ENTRY(getpid)
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl $20, %eax
+
+    pushl $return_getpid
+    pushl %ebp
+    
+    movl %esp, %ebp
+    sysenter
+
+return_getpid:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    cmpl $0, %eax
+    jge fi_getpid
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_getpid:
+    popl %ebp
+    ret
+
+ENTRY(fork)
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl $2, %eax
+
+    pushl $return_fork
+
+    pushl %ebp
+    movl %esp, %ebp
+    sysenter
+
+return_fork:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    cmpl $0, %eax
+    jge fi_fork
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+
+fi_fork:
+    popl %ebp
+    ret
+
+
