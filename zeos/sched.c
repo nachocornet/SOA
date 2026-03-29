@@ -15,6 +15,8 @@ struct list_head readyqueue;
 struct task_struct *init_task;
 struct task_struct *idle_task;
 
+int remaining_ticks;
+
 int PT_system;
 page_table_entry *PT_systemAddress;
 
@@ -56,6 +58,10 @@ void allocate_DIR(struct task_struct *t) {
 	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
 	set_ss_pag(PT_systemAddress, PT_user, PT_user, 0);
 
+	/* Mapear el PCB en PT_systemAddress para que sea accesible con cualquier CR3 */
+	unsigned int PCB_frame = ((unsigned int)t) >> 12;
+	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
+
 	/* Guardar directorio en task_struct */
 	t->dir_pages_baseAddr = DirAddress;
 }
@@ -66,7 +72,7 @@ void cpu_idle(void)
 	__sti();
 	while(1)
 	{
-	;
+		printk("Idle...\n");
 	}
 }
 
@@ -103,82 +109,95 @@ void init_idle (void)
 	
 	// 6)
 	t->PID = 0;
+	t->quantum = 1000;
 
 	// 7)
 	idle_task = t;
-	
-
 }
 
 void init_task1(void)
 {
-	// 1)
-	// a)
+	// PASO 1: Allocate structures to store process address space
+
+	// 1a) Allocate a new directory
 	int Dir = alloc_frame();
 	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
 
-	// b)
+	// 1b) Initialize all directory entries
 	clear_page_table(DirAddress);
 
-	// c)
-	PT_system = alloc_frame();
-	PT_systemAddress = (page_table_entry *) (PT_system << 12);
-	clear_page_table(PT_systemAddress);
+	// 1c) Allocate a page table to store system mappings (ONLY ONCE, globally)
+	// 1d) Initialize used system pages on this system page table
+	if (PT_system == 0) {
+		PT_system = alloc_frame();
+		PT_systemAddress = (page_table_entry *) (PT_system << 12);
+		clear_page_table(PT_systemAddress);
+		set_kernel_pages(PT_systemAddress);
+	}
 
-	// d)
-	set_kernel_pages(PT_systemAddress);
-
-	// e)
+	// 1e) Allocate a page table to store user mappings
 	int PT_user = alloc_frame();
 	page_table_entry *PT_userAddress = (page_table_entry *) (PT_user << 12);
 	clear_page_table(PT_userAddress);
 
-	// f)
+	// 1f) Complete initialization of address space with set_user_pages
 	set_user_pages(PT_userAddress);
 
-	// g)
+	// 1g) Map Directory and both page tables in the system page table
 	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
 	set_ss_pag(PT_systemAddress, PT_system, PT_system, 0);
 	set_ss_pag(PT_systemAddress, PT_user, PT_user, 0);
 
-	// h)
+	// 1h) Assign System page table to first directory entry
 	DirAddress[0].entry = 0;
 	DirAddress[0].bits.pbase_addr = PT_system;
 	DirAddress[0].bits.rw = 1;
 	DirAddress[0].bits.present = 1;
 
-	// i)
+	// 1i) Assign User page table to second directory entry with user permissions
 	DirAddress[1].entry = 0;
 	DirAddress[1].bits.pbase_addr = PT_user;
 	DirAddress[1].bits.rw = 1;
 	DirAddress[1].bits.present = 1;
 	DirAddress[1].bits.user = 1;
 
-	// 2)
+
+	// PASO 2: Allocate a new struct task_struct
 	struct list_head *first = list_first(&freequeue);
 	list_del(first);
 	struct task_struct *t = list_head_to_task_struct(first);
 
-	// 3)
+
+	// PASO 3: Map PCB in the system page table
 	int PCB_frame = ((unsigned int)t) >> 12;
 	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
 
-	// 4) 
-	t->PID = 1;
 
-	// 5)
+	// PASO 4: Assign PID 1 to the process
+	t->PID = 1;
+	t->quantum = 10;
+
+
+	// PASO 5: Update the TSS to point to the new task system stack
 	union task_union *tu = (union task_union *)t;
-	tss.esp0 = (DWord)&(tu->stack[KERNEL_STACK_SIZE]);
+	tss.esp0 = (DWord)&(tu->stack[KERNEL_STACK_SIZE - 2]);
 	writeMSR(0x175, tss.esp0);
 
-	// 6)
+	// Initialize kernel_esp for use in fork()
+	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
+
+
+	// PASO 6: Initialize dir_pages_baseAddr with the new directory
 	t->dir_pages_baseAddr = DirAddress;
 
-	// 7)
-	set_cr3(t->dir_pages_baseAddr);
 
-	// 8)
+	// PASO 7: Set its page directory as the current page directory
+	set_cr3((page_table_entry *)Dir);
+
+
+	// PASO 8: Define global init_task and initialize it to this init PCB
 	init_task = t;
+	remaining_ticks = t->quantum;
 }
 
 
@@ -199,7 +218,7 @@ void inner_task_switch(union task_union *new) {
 	writeMSR(0x175, (DWord) &(new->stack[KERNEL_STACK_SIZE])); 
 
 	// 2)
-	set_cr3(new->task.dir_pages_baseAddr);
+	set_cr3((page_table_entry *)(((unsigned int)new->task.dir_pages_baseAddr) >> 12));
 
 	switch_stack(&(current()->kernel_esp), new->task.kernel_esp);
 }
@@ -219,4 +238,54 @@ page_table_entry * get_PT (struct task_struct *t)
 
 struct task_struct * list_head_to_task_struct(struct list_head *l) {
 	return (struct task_struct *)((unsigned int)l & 0xFFFFF000);
+}
+
+int get_quantum(struct task_struct *t) {
+    return t->quantum;
+}
+
+void set_quantum(struct task_struct *t, int new_quantum) {
+    t->quantum = new_quantum;
+}
+
+void update_sched_data_rr(void) {
+    remaining_ticks--;
+}
+
+int needs_sched_rr(void) {
+    return (remaining_ticks <= 0) && (!list_empty(&readyqueue));
+}
+
+void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue) {
+    if (t->list.next != NULL && t->list.prev != NULL) { // if in some queue
+        list_del(&t->list);
+    }
+    if (dst_queue != NULL) {
+        list_add_tail(&t->list, dst_queue);
+    }
+}
+
+void sched_next_rr(void) {
+    struct task_struct *next;
+    if (!list_empty(&readyqueue)) {
+        struct list_head *next_item = list_first(&readyqueue);
+        list_del(next_item);
+        next = list_head_to_task_struct(next_item);
+    } else {
+        next = idle_task;
+    }
+    remaining_ticks = next->quantum;
+	update_process_state_rr(next, NULL);
+    task_switch((union task_union *) next);
+}
+
+void schedule(void) {
+    update_sched_data_rr();
+    if (needs_sched_rr()) {
+        struct task_struct *actual = current();
+        if (actual != idle_task) {
+            update_process_state_rr(actual, &readyqueue);
+        }
+        sched_next_rr();
+    }
 }

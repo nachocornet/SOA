@@ -20,6 +20,7 @@ struct task_struct {
 
   struct list_head list;
   int kernel_esp;
+  int quantum;
 };
 
 union task_union {

@@ -54,3 +54,4 @@ ENTRY(switch_stack)
     popl %ebp
 
     ret
+

@@ -148,3 +148,36 @@ return_fork:
 fi_fork:
     popl %ebp
     ret
+
+.globl exit; .type exit, @function; .align 0; exit:
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl $1, %eax
+
+    pushl $return_exit
+
+    pushl %ebp
+    movl %esp, %ebp
+    sysenter
+
+return_exit:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    cmpl $0, %eax
+    jge fi_exit
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_exit:
+    popl %ebp
+    ret

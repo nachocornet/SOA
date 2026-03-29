@@ -6,6 +6,7 @@
 #include <segment.h>
 #include <hardware.h>
 #include <io.h>
+#include <sched.h>
 
 #include <zeos_interrupt.h>
 
@@ -13,6 +14,7 @@ Gate idt[IDT_ENTRIES];
 Register    idtR;
 
 int zeos_ticks = 0;
+extern int remaining_ticks;
 
 char char_map[] =
 {
@@ -103,6 +105,7 @@ void clock_routine()
 {
   zeos_show_clock();
   zeos_ticks++;
+  schedule();
 }
 
 
@@ -123,15 +126,6 @@ void keyboard_routine() {
         } else {
             printc_xy(0, 0, char_to_print);
         }
-        printk("\nCambiando de proceso...\n");
-        if(current() != idle_task) {
-            task_switch((union task_union *)idle_task);
-            printk("Proceso cambiado a idle_task.\n");
-        } else {
-            task_switch((union task_union *)init_task);
-            printk("Proceso cambiado a init_task.\n");
-        }
-
     }
 }
 

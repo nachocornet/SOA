@@ -35,32 +35,32 @@ int __attribute__ ((__section__(".text.main")))
 
   int pid_fork, myPID;
   write(1, "Llamando a fork...\n", 20);
-  pid_fork = fork();
+  for(int j = 0; j < 5; j++) {
+    pid_fork = fork();
+    if(pid_fork == 0) {
+        myPID = getpid();
+        char pidStr[10];
+        itoa(myPID, pidStr);
+        write(1, "Soy el proceso hijo con PID: ", 29);
+        write(1, pidStr, strlen(pidStr));
+        write(1, "\n", 1);
+        break; 
+    } else if (pid_fork > 0) {
+        write(1, "Soy el proceso padre, he creado un hijo con PID: ", 48);
+        char pidStr[10];
+        itoa(pid_fork, pidStr);
+        write(1, pidStr, strlen(pidStr));
+        write(1, "\n", 1);
+        write(1, "Mi PID es: ", 11);
+        itoa(getpid(), pidStr);
+        write(1, pidStr, strlen(pidStr));
+        write(1, "\n", 1);
+    } else {
+        write(1, "Error al crear el proceso hijo\n", 32);
+    }
 
-  if (pid_fork == 0) {
-    write(1, "Soy el proceso hijo\n", 21);
-    myPID = getpid();
-    char pidStr[10];
-    itoa(myPID, pidStr);
-    write(1, "PID del proceso hijo: ", 22);
-    write(1, pidStr, strlen(pidStr));
-    write(1, "\n", 1);
-  } else if (pid_fork > 0) {
-    write(1, "Soy el proceso padre\n", 21);
-    int pidHijo = pid_fork;
-    write(1, "PID del proceso hijo (desde el padre): ", 37);
-    itoa(pidHijo, buff);
-    write(1, buff, strlen(buff));
-    write(1, "\n", 1);
-    myPID = getpid();
-    char pidStr[10];
-    itoa(myPID, pidStr);
-    write(1, "PID del proceso padre: ", 22);
-    write(1, pidStr, strlen(pidStr));
-    write(1, "\n", 1);
-  } else {
-    write(1, "Error al crear el proceso hijo\n", 31);
   }
+
 
   /* make sure main does not return.  In this tiny OS the kernel
      does not set up a return address for the first user function, so
