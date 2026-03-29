@@ -83,11 +83,17 @@ int sys_getpid()
 
 int sys_fork()
 {
+    unsigned long stack;
     int i;
     int frames[NUM_PAG_DATA];
 
-    if (list_empty(&freequeue))
+    /* DESHABILITAR INTERRUPCIONES para evitar context switch durante fork */
+    asm("cli");
+
+    if (list_empty(&freequeue)) {
+        asm("sti");
         return -12; /* ENOMEM */
+    }
 
     struct list_head *free_item = list_first(&freequeue);
     list_del(free_item);
@@ -98,29 +104,24 @@ int sys_fork()
 
     /* Copiamos SOLO task_struct, no la pila completa.
        La pila contiene contexto específico del padre que no es válido en el hijo. */
-    copy_data(parent_u, child_u, sizeof(struct task_struct));
-
+    copy_data(parent_u, child_u, sizeof(union task_union));
     /* El list_head del hijo debe reiniciarse para evitar corrupción de colas */
     INIT_LIST_HEAD(&child->list);
+
 
     /* Directorios + tablas nuevas del hijo */
     child->dir_pages_baseAddr = NULL;
     allocate_DIR(child);
+
     
     if (child->dir_pages_baseAddr == NULL) {
         list_add_tail(&child->list, &freequeue);
+        asm("sti");
         return -12; /* ENOMEM */
     }
 
-    printk("Allocated child DIR\n");
-
     struct task_struct *parent = current();
-    if (parent->dir_pages_baseAddr == NULL) {
-        printk("ERROR: parent dir_pages_baseAddr is NULL!\n");
-        list_add_tail(&child->list, &freequeue);
-        return -12;
-    }
-
+    
     /* Acceder a PT_parent a través del mapeo en kernel (PT_system) */
     unsigned int PT_parent_frame = parent->dir_pages_baseAddr[1].bits.pbase_addr;
     page_table_entry *PT_parent = (page_table_entry *)(PT_parent_frame << 12);
@@ -129,12 +130,13 @@ int sys_fork()
     unsigned int PT_child_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
     page_table_entry *PT_child = (page_table_entry *)(PT_child_frame << 12);
 
-    printk("Accessed PT tables\n");
-
     /* 5) Asignar frames físicos para las páginas de datos del hijo */
     for (i = 0; i < NUM_PAG_DATA; i++) {
         frames[i] = alloc_frame();
-        if (frames[i] == -1) return -12;
+        if (frames[i] == -1) {
+            asm("sti");
+            return -12;
+        }
     }
 
     /* 6) Compartir código (páginas de código de usuario) */
@@ -150,18 +152,18 @@ int sys_fork()
 
         /* Mapeo temporal en el padre para escribir en la física recién asignada */
         set_ss_pag(PT_parent, temp_page, frames[i], 1);
-        set_cr3((page_table_entry *)(((unsigned int)get_DIR(current())) >> 12)); /* flush TLB */
+        set_cr3(current()->dir_pages_baseAddr); /* flush TLB */
 
         void *src = (void *) ((PAG_LOG_INIT_DATA + i) << 12);
         void *dst = (void *) (temp_page << 12);
         copy_data(src, dst, PAGE_SIZE);
 
         del_ss_pag(PT_parent, temp_page);
-        set_cr3((page_table_entry *)(((unsigned int)get_DIR(current())) >> 12)); /* flush TLB tras desenlazar */
+        set_cr3(current()->dir_pages_baseAddr); /* flush TLB tras desenlazar */
     }
 
     /* 8) flush final del TLB tras montar estructuras nuevas */
-    set_cr3((page_table_entry *)(((unsigned int)get_DIR(current())) >> 12));
+    set_cr3(current()->dir_pages_baseAddr);
 
     /* 9) PID hijo */
     child->PID = next_PID++;
@@ -170,14 +172,15 @@ int sys_fork()
     /* 10) Preparar pila de sistema del hijo para salir con ret_from_fork */
     /* El hijo no hereda nada de la pila del padre. Creamos una pila "limpia"
        con un punto de entrada en ret_from_fork, como se hace en init_idle(). */
-    child_u->stack[KERNEL_STACK_SIZE - 1] = (unsigned long)ret_from_fork;
-    child_u->stack[KERNEL_STACK_SIZE - 2] = 0; /* EBP falso */
-    child->kernel_esp = (int)&child_u->stack[KERNEL_STACK_SIZE - 2];
-
-    printk("Fork: child created\n");
+    child_u->stack[KERNEL_STACK_SIZE - 17] = (unsigned long)ret_from_fork;
+    child_u->stack[KERNEL_STACK_SIZE - 18] = 0; /* EBP falso */
+    child->kernel_esp = (int)&child_u->stack[KERNEL_STACK_SIZE - 18];
 
     /* 11) Encolar el hijo en readyqueue */
     list_add_tail(&child->list, &readyqueue);
+
+    /* REHABILITAR INTERRUPCIONES */
+    asm("sti");
 
     return child->PID;
 }

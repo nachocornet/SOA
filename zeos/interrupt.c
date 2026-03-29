@@ -14,6 +14,7 @@ Gate idt[IDT_ENTRIES];
 Register    idtR;
 
 int zeos_ticks = 0;
+int in_syscall = 0;
 extern int remaining_ticks;
 
 char char_map[] =
@@ -105,7 +106,10 @@ void clock_routine()
 {
   zeos_show_clock();
   zeos_ticks++;
-  schedule();
+  update_sched_data_rr();
+  if (needs_sched_rr() && !in_syscall) {
+    schedule();
+  }
 }
 
 

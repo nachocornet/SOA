@@ -25,6 +25,7 @@ extern void task_switch(union task_union *new);
 extern void switch_stack(int *save_ebp, int new_esp);
 
 void allocate_DIR(struct task_struct *t) {
+	unsigned long stack;
 	int Dir = alloc_frame();
 	if (Dir == -1)
 		return; /* Sin memoria, el llamante debe manejarlo */
@@ -35,6 +36,18 @@ void allocate_DIR(struct task_struct *t) {
 		return;
 	}
 
+	/* PRIMERO: Mapear los frames en PT_systemAddress ANTES de acceder a ellos */
+	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
+	set_ss_pag(PT_systemAddress, PT_user, PT_user, 0);
+
+	/* Mapear el PCB en PT_systemAddress para que sea accesible con cualquier CR3 */
+	unsigned int PCB_frame = ((unsigned int)t) >> 12;
+	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
+
+	/* FLUSH TLB para asegurar que los nuevos mapeos sean visibles */
+	set_cr3(current()->dir_pages_baseAddr);
+
+	/* AHORA podemos acceder a las direcciones virtuales mapeadas */
 	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
 	page_table_entry *PT_userAddress = (page_table_entry *) (PT_user << 12);
 
@@ -53,14 +66,6 @@ void allocate_DIR(struct task_struct *t) {
 	DirAddress[1].bits.rw = 1;
 	DirAddress[1].bits.present = 1;
 	DirAddress[1].bits.user = 1;
-
-	/* Mapeos en el directorio del sistema para poder acceder directamente a estos frames */
-	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
-	set_ss_pag(PT_systemAddress, PT_user, PT_user, 0);
-
-	/* Mapear el PCB en PT_systemAddress para que sea accesible con cualquier CR3 */
-	unsigned int PCB_frame = ((unsigned int)t) >> 12;
-	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
 
 	/* Guardar directorio en task_struct */
 	t->dir_pages_baseAddr = DirAddress;
@@ -192,7 +197,7 @@ void init_task1(void)
 
 
 	// PASO 7: Set its page directory as the current page directory
-	set_cr3((page_table_entry *)Dir);
+	set_cr3(t->dir_pages_baseAddr);
 
 
 	// PASO 8: Define global init_task and initialize it to this init PCB
@@ -206,19 +211,20 @@ void init_sched()
     INIT_LIST_HEAD(&freequeue);
     INIT_LIST_HEAD(&readyqueue);
     
-    for (int i = 0; i < NR_TASKS; i++) {
+    for (int i = 2; i < NR_TASKS; i++) {
         task[i].task.PID = -1; // Opcional: marquem com a no usat
         list_add_tail(&(task[i].task.list), &freequeue);
     }
 }
 
 void inner_task_switch(union task_union *new) {
+	unsigned long stack;
 	// 1)
 	tss.esp0 = (DWord) &(new->stack[KERNEL_STACK_SIZE]); 
 	writeMSR(0x175, (DWord) &(new->stack[KERNEL_STACK_SIZE])); 
 
 	// 2)
-	set_cr3((page_table_entry *)(((unsigned int)new->task.dir_pages_baseAddr) >> 12));
+	set_cr3(new->task.dir_pages_baseAddr);
 
 	switch_stack(&(current()->kernel_esp), new->task.kernel_esp);
 }
@@ -280,6 +286,7 @@ void sched_next_rr(void) {
 }
 
 void schedule(void) {
+    unsigned long stack;
     update_sched_data_rr();
     if (needs_sched_rr()) {
         struct task_struct *actual = current();
