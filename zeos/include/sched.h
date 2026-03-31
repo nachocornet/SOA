@@ -10,12 +10,10 @@
 #include <mm_address.h>
 
 #define KERNEL_STACK_SIZE	1024
-#define NR_TASKS		10
-
-enum state_t { ST_RUN, ST_READY, ST_BLOCKED };
+#define NR_TASKS		30
 
 struct task_struct {
-  int PID;			/* Process ID. This MUST be the first field of the struct. */
+  int PID;            /* Process ID. This MUST be the first field of the struct. */
   page_table_entry * dir_pages_baseAddr;
 
   struct list_head list;
@@ -48,6 +46,14 @@ void init_task1(void);
 void init_idle(void);
 
 void init_sched(void);
+
+void update_sched_data_rr(void);
+int needs_sched_rr(void);
+void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue);
+void sched_next_rr(void);
+void schedule(void);
+int get_quantum(struct task_struct *t);
+void set_quantum(struct task_struct *t, int new_quantum);
 
 struct task_struct * current();
 

@@ -15,10 +15,10 @@ struct list_head readyqueue;
 struct task_struct *init_task;
 struct task_struct *idle_task;
 
-int remaining_ticks;
-
 int PT_system;
 page_table_entry *PT_systemAddress;
+
+static int remaining_ticks;
 
 extern void writeMSR(unsigned int msr_number, unsigned int value);
 extern void task_switch(union task_union *new);
@@ -115,9 +115,6 @@ void init_idle (void)
 	// 6)
 	t->PID = 0;
 	t->quantum = 1000;
-
-	// 7)
-	idle_task = t;
 }
 
 void init_task1(void)
@@ -181,6 +178,7 @@ void init_task1(void)
 	// PASO 4: Assign PID 1 to the process
 	t->PID = 1;
 	t->quantum = 10;
+	remaining_ticks = t->quantum;
 
 
 	// PASO 5: Update the TSS to point to the new task system stack
@@ -202,7 +200,7 @@ void init_task1(void)
 
 	// PASO 8: Define global init_task and initialize it to this init PCB
 	init_task = t;
-	remaining_ticks = t->quantum;
+
 }
 
 
@@ -229,6 +227,66 @@ void inner_task_switch(union task_union *new) {
 	switch_stack(&(current()->kernel_esp), new->task.kernel_esp);
 }
 
+void update_sched_data_rr(void)
+{
+	if (current() != idle_task) {
+		remaining_ticks--;
+	}
+}
+
+int needs_sched_rr(void)
+{
+	if (!list_empty(&readyqueue)) {
+		if (current() == idle_task) {
+			return 1;
+		}
+		if (remaining_ticks <= 0) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue)
+{
+	if (dst_queue == NULL) {
+		return;
+	}
+
+	list_add_tail(&t->list, dst_queue);
+}
+
+void sched_next_rr(void)
+{
+	if (list_empty(&readyqueue)) {
+		return;
+	}
+
+	struct task_struct *next = list_head_to_task_struct(list_first(&readyqueue));
+	list_del(&next->list);
+
+	update_process_state_rr(next, NULL);
+	remaining_ticks = get_quantum(next);
+	task_switch((union task_union *) next);
+}
+
+void schedule(void)
+{
+	update_sched_data_rr();
+
+	if (!needs_sched_rr()) {
+		return;
+	}
+
+	struct task_struct *cur = current();
+
+	if (cur != idle_task) {
+		update_process_state_rr(cur, &readyqueue);
+	}
+
+	sched_next_rr();
+}
+
 
 /* get_DIR - Returns the Page Directory address for task 't' */
 page_table_entry * get_DIR (struct task_struct *t)
@@ -252,47 +310,4 @@ int get_quantum(struct task_struct *t) {
 
 void set_quantum(struct task_struct *t, int new_quantum) {
     t->quantum = new_quantum;
-}
-
-void update_sched_data_rr(void) {
-    remaining_ticks--;
-}
-
-int needs_sched_rr(void) {
-    return (remaining_ticks <= 0) && (!list_empty(&readyqueue));
-}
-
-void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue) {
-    if (t->list.next != NULL && t->list.prev != NULL) { // if in some queue
-        list_del(&t->list);
-    }
-    if (dst_queue != NULL) {
-        list_add_tail(&t->list, dst_queue);
-    }
-}
-
-void sched_next_rr(void) {
-    struct task_struct *next;
-    if (!list_empty(&readyqueue)) {
-        struct list_head *next_item = list_first(&readyqueue);
-        list_del(next_item);
-        next = list_head_to_task_struct(next_item);
-    } else {
-        next = idle_task;
-    }
-    remaining_ticks = next->quantum;
-	update_process_state_rr(next, NULL);
-    task_switch((union task_union *) next);
-}
-
-void schedule(void) {
-    unsigned long stack;
-    update_sched_data_rr();
-    if (needs_sched_rr()) {
-        struct task_struct *actual = current();
-        if (actual != idle_task) {
-            update_process_state_rr(actual, &readyqueue);
-        }
-        sched_next_rr();
-    }
 }

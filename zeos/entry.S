@@ -87,7 +87,6 @@ ENTRY(custom_page_fault_handler)
       call custom_page_fault_routine
 ENTRY(syscall_handler_sysenter)
       push $__USER_DS
-      movl $1, in_syscall
       push %EBP /* User stack address */
       pushfl
       push $__USER_CS
@@ -106,7 +105,6 @@ sysenter_fin:
       RESTORE_ALL
       movl (%ESP), %EDX // Return address
       movl 12(%ESP), %ECX // User stack address
-      movl $0, in_syscall
       sti // Enable interrupts again
       sysexit
 ENTRY(ret_from_fork)

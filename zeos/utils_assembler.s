@@ -62,3 +62,11 @@
     popl %ebp
 
     ret
+
+.globl get_esp; .type get_esp, @function; .align 0; get_esp:
+    movl %esp, %eax
+    ret
+
+.globl get_ebp; .type get_ebp, @function; .align 0; get_ebp:
+    movl %ebp, %eax
+    ret

@@ -55,3 +55,11 @@ ENTRY(switch_stack)
 
     ret
 
+ENTRY(get_esp)
+    movl %esp, %eax
+    ret
+
+ENTRY(get_ebp)
+    movl %ebp, %eax
+    ret
+

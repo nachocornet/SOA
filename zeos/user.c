@@ -37,24 +37,27 @@ int __attribute__ ((__section__(".text.main")))
   write(1, "Llamando a fork...\n", 20);
   for(int j = 0; j < 5; j++) {
     pid_fork = fork();
+    char pidStr[10];
+    write(1, "Valor del fork: ", 16);
+    itoa(pid_fork, pidStr);
+    write(1, pidStr, strlen(pidStr));
+    write(1, "\n", 1);
     if(pid_fork == 0) {
-        myPID = getpid();
-        char pidStr[10];
+        write(1, "PROCESO HIJO\n", 13);
+        /*myPID = getpid();
+        write(1, "Soy el proceso hijo, mi PID es: ", 32);
         itoa(myPID, pidStr);
-        write(1, "Soy el proceso hijo con PID: ", 29);
         write(1, pidStr, strlen(pidStr));
-        write(1, "\n", 1);
+        write(1, "\n", 1);*/
         break; 
     } else if (pid_fork > 0) {
-        write(1, "Soy el proceso padre, he creado un hijo con PID: ", 48);
-        char pidStr[10];
-        itoa(pid_fork, pidStr);
-        write(1, pidStr, strlen(pidStr));
+        write(1, "PROCESO PADRE", 14);
+        /*char pidStr[10];
         write(1, "\n", 1);
         write(1, "Mi PID es: ", 11);
         itoa(getpid(), pidStr);
         write(1, pidStr, strlen(pidStr));
-        write(1, "\n", 1);
+        write(1, "\n", 1);*/
     } else {
         write(1, "Error al crear el proceso hijo\n", 32);
     }
@@ -72,8 +75,9 @@ int __attribute__ ((__section__(".text.main")))
 
   /* never return from user code */
   for(;;) {
-    for(int i = 0;i < 1000000;i++) {}
-      int pidN = getpid();
+    for(int i = 0;i < 100000000000000;i++) {}
+      
+    int pidN = getpid();
     char pidStr[10];
     itoa(pidN, pidStr);
     write(1, "PID del proceso: ", 17);
