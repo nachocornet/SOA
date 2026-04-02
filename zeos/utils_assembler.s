@@ -29,9 +29,9 @@
  mov %esp, %ebp
 
  # 1
- push %ebx
  push %esi
  push %edi
+ push %ebx
 
     # 2
  push 8(%ebp)
@@ -40,9 +40,9 @@
  addl $4, %esp
 
     # 3
+ pop %ebx
  pop %edi
  pop %esi
- pop %ebx
 
  mov %ebp,%esp
  pop %ebp
@@ -57,7 +57,8 @@
     movl 8(%ebp), %eax
     movl %ebp, (%eax)
 
-    movl 12(%ebp), %esp
+    movl 12(%ebp), %eax
+    movl (%eax), %esp
 
     popl %ebp
 

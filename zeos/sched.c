@@ -75,9 +75,9 @@ void allocate_DIR(struct task_struct *t) {
 void cpu_idle(void)
 {
 	__sti();
+	printk("Idle task running...\n");
 	while(1)
 	{
-		printk("Idle...\n");
 	}
 }
 
@@ -107,6 +107,7 @@ void init_idle (void)
 	tu->stack[KERNEL_STACK_SIZE - 1] = (unsigned long)cpu_idle;
 	tu->stack[KERNEL_STACK_SIZE - 2] = 0;
 	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
+	idle_task = t;
 
 	// 5)
 	int PCB_frame = ((unsigned int)t) >> 12;
@@ -224,7 +225,7 @@ void inner_task_switch(union task_union *new) {
 	// 2)
 	set_cr3(new->task.dir_pages_baseAddr);
 
-	switch_stack(&(current()->kernel_esp), new->task.kernel_esp);
+	switch_stack(&(current()->kernel_esp), &(new->task.kernel_esp));
 }
 
 void update_sched_data_rr(void)

@@ -21,9 +21,9 @@ ENTRY(task_switch)
 	mov %esp, %ebp 
 
 	# 1 
-	push %ebx
 	push %esi
 	push %edi
+	push %ebx
 
     # 2
 	push 8(%ebp) 
@@ -32,9 +32,9 @@ ENTRY(task_switch)
 	addl $4, %esp
 
     # 3
+	pop %ebx
 	pop %edi
 	pop %esi
-	pop %ebx
 
 	mov %ebp,%esp
 	pop %ebp 
@@ -47,9 +47,10 @@ ENTRY(switch_stack)
 
     # old_ebp --> old_task->task.kernel_esp
     movl 8(%ebp), %eax
-    movl %ebp, (%eax)
+    movl %ebp, (%eax)       // current()->task.kernel_esp = ebp
 
-    movl 12(%ebp), %esp
+    movl 12(%ebp), %eax 
+    movl (%eax), %esp
 
     popl %ebp
 

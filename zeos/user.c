@@ -34,7 +34,7 @@ int __attribute__ ((__section__(".text.main")))
   }
 
   int pid_fork, myPID;
-  write(1, "Llamando a fork...\n", 20);
+  write(1, "Llamando a fork...\n", 19);
   for(int j = 0; j < 5; j++) {
     pid_fork = fork();
     char pidStr[10];
@@ -43,45 +43,45 @@ int __attribute__ ((__section__(".text.main")))
     write(1, pidStr, strlen(pidStr));
     write(1, "\n", 1);
     if(pid_fork == 0) {
-        write(1, "PROCESO HIJO\n", 13);
-        /*myPID = getpid();
-        write(1, "Soy el proceso hijo, mi PID es: ", 32);
-        itoa(myPID, pidStr);
-        write(1, pidStr, strlen(pidStr));
-        write(1, "\n", 1);*/
-        break; 
+      write(1, "PROCESO HIJO\n", 13);
+      /* myPID = getpid();
+      write(1, "Soy el proceso hijo, mi PID es: ", 32);
+      itoa(myPID, pidStr);
+      write(1, pidStr, strlen(pidStr));
+      write(1, "\n", 1); */
+      break; 
     } else if (pid_fork > 0) {
-        write(1, "PROCESO PADRE", 14);
-        /*char pidStr[10];
-        write(1, "\n", 1);
-        write(1, "Mi PID es: ", 11);
-        itoa(getpid(), pidStr);
-        write(1, pidStr, strlen(pidStr));
-        write(1, "\n", 1);*/
+      write(1, "PROCESO PADRE", 13);
+      /* char pidStr[10];
+      write(1, "\n", 1);
+      write(1, "Mi PID es: ", 11);
+      itoa(getpid(), pidStr);
+      write(1, pidStr, strlen(pidStr));
+      write(1, "\n", 1); */
     } else {
-        write(1, "Error al crear el proceso hijo\n", 32);
+      write(1, "Error al crear el proceso hijo\n", 31);
     }
-
+    
   }
-
-
+  
+  
+  
   /* make sure main does not return.  In this tiny OS the kernel
-     does not set up a return address for the first user function, so
-     falling off the end of main will pop a garbage value and jump
-     somewhere inside the image (0xEBFE is a repeat of "jmp -2"!) which
-     triggers the invalid‑opcode fault you were seeing.  Instead of
-     returning we simply spin forever or you can explicitly call a
-     termination syscall if one is provided by your kernel. */
-
+  does not set up a return address for the first user function, so
+  falling off the end of main will pop a garbage value and jump
+  somewhere inside the image (0xEBFE is a repeat of "jmp -2"!) which
+  triggers the invalid‑opcode fault you were seeing.  Instead of
+  returning we simply spin forever or you can explicitly call a
+  termination syscall if one is provided by your kernel. */
+  
   /* never return from user code */
   for(;;) {
     for(int i = 0;i < 100000000000000;i++) {}
-      
-    int pidN = getpid();
-    char pidStr[10];
-    itoa(pidN, pidStr);
-    write(1, "PID del proceso: ", 17);
-    write(1, pidStr, strlen(pidStr));
-    write(1, "\n", 1);
+      int pidN = getpid();
+      char pidStr[10];
+      itoa(pidN, pidStr);
+      write(1, "PID del proceso: ", 17);
+      write(1, pidStr, strlen(pidStr));
+      write(1, "\n", 1);
   }
 }

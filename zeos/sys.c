@@ -158,11 +158,11 @@ int sys_fork()
     unsigned long parent_stack_base = (unsigned long)&parent_u->stack[0];
     unsigned long child_stack_base = (unsigned long)&child_u->stack[0];
     unsigned long offset_ebp = parent_ebp - parent_stack_base;
-    child->kernel_esp = (int)(child_stack_base + offset_ebp);
 
     unsigned long *child_ebp = (unsigned long *)(child_stack_base + offset_ebp);
-    child_ebp[0] = 0;
-    child_ebp[1] = (unsigned long) ret_from_fork;
+    child_ebp[0] = (unsigned long) ret_from_fork;
+    child_ebp[-1] = 0;
+    child->kernel_esp = (int)(child_ebp - 1);
 
     /* Add the new child to the ready queue for the scheduler. */
     update_process_state_rr(child, &readyqueue);
