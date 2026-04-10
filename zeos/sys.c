@@ -70,7 +70,6 @@ int sys_write(int fd, char *buffer, int size) {
 }
 
 extern int zeos_ticks;
-extern unsigned long get_esp(void);
 extern unsigned long get_ebp(void);
 
 int sys_gettime()
@@ -87,92 +86,91 @@ int sys_fork()
 {
     int i;
     int frames[NUM_PAG_DATA];
+    struct task_struct *parent = current();
 
-    // 2) 
-    if (list_empty(&freequeue)) {
-        return -12; /* ENOMEM */
-    }
+    for (i = 0; i < NUM_PAG_DATA; ++i) frames[i] = -1;
+
+    if (list_empty(&freequeue)) return -12; /* ENOMEM */
 
     struct list_head *free_item = list_first(&freequeue);
     list_del(free_item);
     struct task_struct *child = list_head_to_task_struct(free_item);
 
-    // 3) 
-    union task_union *parent_u = (union task_union *) current();
-    union task_union *child_u  = (union task_union *) child;
+    union task_union *parent_u = (union task_union *)parent;
+    union task_union *child_u  = (union task_union *)child;
 
     copy_data(parent_u, child_u, sizeof(union task_union));
     INIT_LIST_HEAD(&child->list);
 
-    /* Directorios + tablas nuevas del hijo */
     child->dir_pages_baseAddr = NULL;
     allocate_DIR(child);
     if (child->dir_pages_baseAddr == NULL) {
         list_add_tail(&child->list, &freequeue);
-        return -12; /* ENOMEM */
+        return -12;
     }
 
-    struct task_struct *parent = current();
-    unsigned int PT_parent_frame = parent->dir_pages_baseAddr[1].bits.pbase_addr;
-    page_table_entry *PT_parent = (page_table_entry *)(PT_parent_frame << 12);
+    page_table_entry *PT_parent = get_PT(parent);
+    page_table_entry *PT_child  = get_PT(child);
 
-    unsigned int PT_child_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
-    page_table_entry *PT_child = (page_table_entry *)(PT_child_frame << 12);
+    /* Share user code pages (read-only). */
+    for (i = 0; i < NUM_PAG_CODE; ++i)
+        PT_child[NUM_PAG_DATA + i].entry = PT_parent[NUM_PAG_DATA + i].entry;
 
-    for (i = 0; i < NUM_PAG_DATA; i++) {
+    for (i = 0; i < NUM_PAG_DATA; ++i) {
         frames[i] = alloc_frame();
-        if (frames[i] == -1) {
-            for (int j = 0; j < i; j++) {
-                free_frame(frames[j]);
-            }
-            list_add_tail(&child->list, &freequeue);
-            return -12;
+        if (frames[i] == -1) goto fork_nomem;
+        set_ss_pag(PT_child, i, frames[i], 1);
+    }
+
+    /* Copy user data+stack into child frames using a temporary parent mapping. */
+    {
+        const unsigned temp_page = NUM_PAG_DATA + NUM_PAG_CODE;
+        for (i = 0; i < NUM_PAG_DATA; ++i) {
+            set_ss_pag(PT_parent, temp_page, frames[i], 1);
+            set_cr3(parent->dir_pages_baseAddr);
+
+            copy_data((void *)((PAG_LOG_INIT_DATA + i) << 12),
+                      (void *)((PAG_LOG_INIT_DATA + temp_page) << 12),
+                      PAGE_SIZE);
+
+            del_ss_pag(PT_parent, temp_page);
         }
+        set_cr3(parent->dir_pages_baseAddr);
     }
-
-    for (i = 0; i < NUM_PAG_CODE; i++) {
-        PT_child[PAG_LOG_INIT_CODE + i].entry = PT_parent[PAG_LOG_INIT_CODE + i].entry;
-    }
-
-    const unsigned temp_page = PAG_LOG_INIT_DATA + NUM_PAG_DATA + NUM_PAG_CODE;
-
-    for (i = 0; i < NUM_PAG_DATA; i++) {
-        set_ss_pag(PT_child, PAG_LOG_INIT_DATA + i, frames[i], 1);
-
-        set_ss_pag(PT_parent, temp_page, frames[i], 1);
-        set_cr3(current()->dir_pages_baseAddr);
-
-        void *src = (void *) ((PAG_LOG_INIT_DATA + i) << 12);
-        void *dst = (void *) (temp_page << 12);
-        copy_data(src, dst, PAGE_SIZE);
-
-        del_ss_pag(PT_parent, temp_page);
-    }
-
-    set_cr3(current()->dir_pages_baseAddr);
 
     child->PID = next_PID++;
-    child->quantum = current()->quantum;
+    child->quantum = parent->quantum;
 
+    /*
+     * Prepare child so first schedule returns through ret_from_fork and then
+     * through the common syscall exit path with EAX=0.
+     */
     unsigned long parent_ebp = get_ebp();
-    unsigned long offset = parent_ebp - (unsigned long)parent_u;
-    
-    // Apuntem directament a la base de la funció dins la pila del fill
-    unsigned long *child_ebp = (unsigned long *)((unsigned long)child_u + offset);
-    
-    // Matxaquem el vell EBP per un 0 perquè switch_stack el tregui
-    child_ebp[0] = 0; 
-    
-    // Substituïm l'antiga adreça de retorn per la nostra
-    child_ebp[1] = (unsigned long)ret_from_fork; 
-    
-    // Guardem el nou punter de la pila
-    child->kernel_esp = (int*)child_ebp;
+    unsigned long ebp_offset = parent_ebp - (unsigned long)parent_u;
+    unsigned long *child_ebp = (unsigned long *)((unsigned long)child_u + ebp_offset);
 
-    /* Add the new child to the ready queue for the scheduler. */
+    child_ebp[0] = 0;
+    child_ebp[1] = (unsigned long)ret_from_fork;
+    child_ebp[8] = 0;
+    child->kernel_esp = (int)child_ebp;
+
     update_process_state_rr(child, &readyqueue);
-
     return child->PID;
+
+fork_nomem:
+    for (i = 0; i < NUM_PAG_DATA; ++i)
+        if (frames[i] != -1) free_frame(frames[i]);
+
+    if (child->dir_pages_baseAddr != NULL) {
+        unsigned int dir_frame = ((unsigned int)child->dir_pages_baseAddr) >> 12;
+        unsigned int pt_user_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
+        free_frame(pt_user_frame);
+        free_frame(dir_frame);
+        child->dir_pages_baseAddr = NULL;
+    }
+
+    list_add_tail(&child->list, &freequeue);
+    return -12;
 }
 
 void sys_exit(void) {

@@ -22,7 +22,7 @@ static int remaining_ticks;
 
 extern void writeMSR(unsigned int msr_number, unsigned int value);
 extern void task_switch(union task_union *new);
-extern void switch_stack(int *save_ebp, int new_esp);
+extern void switch_stack(int *save_ebp, int *new_esp);
 
 void allocate_DIR(struct task_struct *t) {
 	int Dir = alloc_frame();

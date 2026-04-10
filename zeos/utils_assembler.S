@@ -47,7 +47,7 @@ ENTRY(switch_stack)
 
     # old_ebp --> old_task->task.kernel_esp
     movl 8(%ebp), %eax
-    movl %ebp, (%eax)       // current()->task.kernel_esp = ebp
+    movl %ebp, (%eax)       // current()->task.kernel_esp = switch_stack frame EBP
 
     movl 12(%ebp), %eax 
     movl (%eax), %esp

@@ -1,87 +1,78 @@
 #include <libc.h>
 
-char buff[24];
+static volatile int shared_probe = 111;
 
-int pid;
+static void print_text(char *text)
+{
+  write(1, text, strlen(text));
+}
 
-
-extern int addASM(int a, int b);
+static void print_int_line(char *label, int value)
+{
+  char n[16];
+  write(1, label, strlen(label));
+  itoa(value, n);
+  write(1, n, strlen(n));
+  write(1, "\n", 1);
+}
 
 int __attribute__ ((__section__(".text.main")))
   main(void)
 {
-    /* Next line, tries to move value 0 to CR3 register. This register is a privileged one, and so it will raise an exception */
-     /* __asm__ __volatile__ ("mov %0, %%cr3"::"r" (0) ); */
+  int parent_pid = getpid();
+  int ret;
 
+  print_text("=== TEST FORK ZEOS ===\n");
+  print_int_line("Parent PID: ", parent_pid);
 
+  print_text("[1] Basic fork return test\n");
+  ret = fork();
+  if (ret < 0) {
+    print_text("fork() failed in basic test\n");
+    perror();
+    for(;;) {}
+  }
 
-    int tiempo_incial = gettime();
-    int cont = 0;
-  while (cont < 10){ 
-    int tiempo_actual = gettime();
-    if (tiempo_actual - tiempo_incial > 100) {
-        write(1, "Tiempo transcurrido: ", 21);
-        itoa(tiempo_actual - tiempo_incial, buff);
-        write(1, buff, strlen(buff));
-        write(1, "\n", 1);
-        itoa(tiempo_actual, buff);
-        write(1, "Tiempo actual: ", 15);
-        write(1, buff, strlen(buff));
-        write(1, "\n", 1);
-        tiempo_incial = tiempo_actual;
-        cont++;
+  if (ret == 0) {
+    int child_pid = getpid();
+    print_text("Child branch reached\n");
+    print_int_line("fork() returned: ", ret);
+    print_int_line("Child PID: ", child_pid);
+    shared_probe = 222;
+    for(;;) {}
+  }
+
+  print_text("Parent branch reached\n");
+  print_int_line("fork() returned child PID: ", ret);
+
+  for (volatile int k = 0; k < 20000000; ++k) {}
+  if (shared_probe == 111) print_text("Memory isolation OK\n");
+  else print_text("Memory isolation FAILED\n");
+
+  print_text("[2] Linear multi-fork test (parent-only)\n");
+  {
+    const int max_children = 3;
+    int created = 0;
+
+    for (int i = 0; i < max_children; ++i) {
+      int r = fork();
+      if (r < 0) {
+        print_text("fork() failed in linear test\n");
+        perror();
+        break;
+      }
+      if (r == 0) {
+        print_text("Linear child started\n");
+        for(;;) {}
+      }
+      created++;
+      print_int_line("Created child PID: ", r);
     }
+
+    print_int_line("Total created in linear test: ", created);
   }
 
-  int pid_fork, myPID;
-  write(1, "Llamando a fork...\n", 19);
-  for(int j = 0; j < 5; j++) {
-    pid_fork = fork();
-    char pidStr[10];
-    write(1, "Valor del fork: ", 16);
-    itoa(pid_fork, pidStr);
-    write(1, pidStr, strlen(pidStr));
-    write(1, "\n", 1);
-    if(pid_fork == 0) {
-      write(1, "PROCESO HIJO\n", 13);
-      /* myPID = getpid();
-      write(1, "Soy el proceso hijo, mi PID es: ", 32);
-      itoa(myPID, pidStr);
-      write(1, pidStr, strlen(pidStr));
-      write(1, "\n", 1); */
-      break; 
-    } else if (pid_fork > 0) {
-      write(1, "PROCESO PADRE", 13);
-      /* char pidStr[10];
-      write(1, "\n", 1);
-      write(1, "Mi PID es: ", 11);
-      itoa(getpid(), pidStr);
-      write(1, pidStr, strlen(pidStr));
-      write(1, "\n", 1); */
-    } else {
-      write(1, "Error al crear el proceso hijo\n", 31);
-    }
-    
-  }
-  
-  
-  
-  /* make sure main does not return.  In this tiny OS the kernel
-  does not set up a return address for the first user function, so
-  falling off the end of main will pop a garbage value and jump
-  somewhere inside the image (0xEBFE is a repeat of "jmp -2"!) which
-  triggers the invalid‑opcode fault you were seeing.  Instead of
-  returning we simply spin forever or you can explicitly call a
-  termination syscall if one is provided by your kernel. */
-  
-  /* never return from user code */
-  for(;;) {
-    for(int i = 0;i < 100000000000000;i++) {}
-      int pidN = getpid();
-      char pidStr[10];
-      itoa(pidN, pidStr);
-      write(1, "PID del proceso: ", 17);
-      write(1, pidStr, strlen(pidStr));
-      write(1, "\n", 1);
-  }
+  print_text("=== END TEST ===\n");
+
+  for(;;) {}
 }

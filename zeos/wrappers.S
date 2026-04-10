@@ -118,7 +118,6 @@ ENTRY(fork)
     movl $2, %eax
 
     pushl $return_fork
-
     pushl %ebp
     movl %esp, %ebp
     sysenter
@@ -136,7 +135,6 @@ return_fork:
     negl %eax
     movl %eax, errno
     movl $-1, %eax
-
 
 fi_fork:
     popl %ebp
