@@ -25,7 +25,6 @@ extern void task_switch(union task_union *new);
 extern void switch_stack(int *save_ebp, int new_esp);
 
 void allocate_DIR(struct task_struct *t) {
-	unsigned long stack;
 	int Dir = alloc_frame();
 	if (Dir == -1)
 		return; /* Sin memoria, el llamante debe manejarlo */
@@ -184,11 +183,11 @@ void init_task1(void)
 
 	// PASO 5: Update the TSS to point to the new task system stack
 	union task_union *tu = (union task_union *)t;
-	tss.esp0 = (DWord)&(tu->stack[KERNEL_STACK_SIZE - 2]);
+	tss.esp0 = (DWord)&(tu->stack[KERNEL_STACK_SIZE]);
 	writeMSR(0x175, tss.esp0);
 
 	// Initialize kernel_esp for use in fork()
-	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
+	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE]);
 
 
 	// PASO 6: Initialize dir_pages_baseAddr with the new directory
@@ -217,7 +216,6 @@ void init_sched()
 }
 
 void inner_task_switch(union task_union *new) {
-	unsigned long stack;
 	// 1)
 	tss.esp0 = (DWord) &(new->stack[KERNEL_STACK_SIZE]); 
 	writeMSR(0x175, (DWord) &(new->stack[KERNEL_STACK_SIZE])); 
@@ -298,7 +296,7 @@ page_table_entry * get_DIR (struct task_struct *t)
 /* get_PT - Returns the Page Table address for task 't' */
 page_table_entry * get_PT (struct task_struct *t)
 {
-       return (page_table_entry *)(((unsigned int)(t->dir_pages_baseAddr->bits.pbase_addr))<<12);
+       return (page_table_entry *)(((unsigned int)(t->dir_pages_baseAddr[1].bits.pbase_addr))<<12);
 }
 
 struct task_struct * list_head_to_task_struct(struct list_head *l) {

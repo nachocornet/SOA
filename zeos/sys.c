@@ -155,14 +155,19 @@ int sys_fork()
     child->quantum = current()->quantum;
 
     unsigned long parent_ebp = get_ebp();
-    unsigned long parent_stack_base = (unsigned long)&parent_u->stack[0];
-    unsigned long child_stack_base = (unsigned long)&child_u->stack[0];
-    unsigned long offset_ebp = parent_ebp - parent_stack_base;
-
-    unsigned long *child_ebp = (unsigned long *)(child_stack_base + offset_ebp);
-    child_ebp[0] = (unsigned long) ret_from_fork;
-    child_ebp[-1] = 0;
-    child->kernel_esp = (int)(child_ebp - 1);
+    unsigned long offset = parent_ebp - (unsigned long)parent_u;
+    
+    // Apuntem directament a la base de la funció dins la pila del fill
+    unsigned long *child_ebp = (unsigned long *)((unsigned long)child_u + offset);
+    
+    // Matxaquem el vell EBP per un 0 perquè switch_stack el tregui
+    child_ebp[0] = 0; 
+    
+    // Substituïm l'antiga adreça de retorn per la nostra
+    child_ebp[1] = (unsigned long)ret_from_fork; 
+    
+    // Guardem el nou punter de la pila
+    child->kernel_esp = (int*)child_ebp;
 
     /* Add the new child to the ready queue for the scheduler. */
     update_process_state_rr(child, &readyqueue);
