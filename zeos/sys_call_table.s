@@ -31,6 +31,8 @@
  .long sys_ni_syscall
  .long sys_ni_syscall
  .long sys_getpid
+ .long sys_block
+ .long sys_unblock
 
 .global MAX_SYSCALL
 MAX_SYSCALL = (.-sys_call_table)/4

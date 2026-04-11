@@ -173,4 +173,61 @@ fi_exit:
     popl %ebp
     ret
 
+ENTRY(block)
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl $21, %eax
+
+    pushl $return_block
+    pushl %ebp
+    movl %esp, %ebp
+    sysenter
+
+return_block:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    popl %ebp
+    ret
+
+ENTRY(unblock)
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl 8(%ebp), %edx
+    movl $22, %eax
+
+    pushl $return_unblock
+    pushl %ebp
+    movl %esp, %ebp
+    sysenter
+
+return_unblock:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    cmpl $0, %eax
+    jge fi_unblock
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_unblock:
+    popl %ebp
+    ret
+
 

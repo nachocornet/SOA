@@ -141,6 +141,8 @@ int sys_fork()
     child->PID = next_PID++;
     child->quantum = parent->quantum;
 
+    child->pending_unblocks = 0;
+
     /*
      * Prepare child so first schedule returns through ret_from_fork and then
      * through the common syscall exit path with EAX=0.
@@ -174,6 +176,68 @@ fork_nomem:
 }
 
 void sys_exit(void) {
-    /* Exit is not implemented yet. The process destruction logic will be added later. */
-    while (1);
+    struct task_struct *p = current();
+    page_table_entry *PT = get_PT(p);
+
+    // Free user data pages (they are at indices 0 to NUM_PAG_DATA - 1 in the user PT)
+    for (int i = 0; i < NUM_PAG_DATA; ++i) {
+        unsigned int frame = get_frame(PT, i);
+        if (frame != 0) {
+            free_frame(frame);
+            del_ss_pag(PT, i);
+        }
+    }
+
+    // Free page table and directory
+    if (p->dir_pages_baseAddr != NULL) {
+        unsigned int dir_frame = ((unsigned int)p->dir_pages_baseAddr) >> 12;
+        unsigned int pt_user_frame = p->dir_pages_baseAddr[1].bits.pbase_addr;
+        free_frame(pt_user_frame);
+        free_frame(dir_frame);
+        p->dir_pages_baseAddr = NULL;
+    }
+
+    // Move to freequeue and select next task
+    update_process_state_rr(p, &freequeue);
+    sched_next_rr();
+}
+
+void sys_block(void)
+{
+    struct task_struct *p = current();
+
+    if (p->pending_unblocks > 0) {
+        p->pending_unblocks--;
+        return;
+    }
+
+    update_process_state_rr(p, &blocked);
+
+    if (!list_empty(&readyqueue)) {
+        sched_next_rr();
+    } else {
+        task_switch((union task_union *)idle_task);
+    }
+}
+
+int sys_unblock(int pid)
+{
+    struct task_struct *child = NULL;
+
+    for (int i = 0; i < NR_TASKS; i++) {
+        if (task[i].task.PID == pid) {
+            child = &(task[i].task);
+            break;
+        }
+    }
+
+    if (child == NULL) return -1;
+
+    if (child->state == ST_BLOCKED) {
+        update_process_state_rr(child, &readyqueue);
+    } else {
+        child->pending_unblocks++;
+    }
+    
+    return 0;
 }

@@ -125,7 +125,6 @@ fi_getpid:
     movl $2, %eax
 
     pushl $return_fork
-
     pushl %ebp
     movl %esp, %ebp
     sysenter
@@ -143,7 +142,6 @@ return_fork:
     negl %eax
     movl %eax, errno
     movl $-1, %eax
-
 
 fi_fork:
     popl %ebp
@@ -179,5 +177,62 @@ return_exit:
     movl $-1, %eax
 
 fi_exit:
+    popl %ebp
+    ret
+
+.globl block; .type block, @function; .align 0; block:
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl $21, %eax
+
+    pushl $return_block
+    pushl %ebp
+    movl %esp, %ebp
+    sysenter
+
+return_block:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    popl %ebp
+    ret
+
+.globl unblock; .type unblock, @function; .align 0; unblock:
+    pushl %ebp
+    movl %esp, %ebp
+
+    pushl %ecx
+    pushl %edx
+
+    movl 8(%ebp), %edx
+    movl $22, %eax
+
+    pushl $return_unblock
+    pushl %ebp
+    movl %esp, %ebp
+    sysenter
+
+return_unblock:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+
+    cmpl $0, %eax
+    jge fi_unblock
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_unblock:
     popl %ebp
     ret

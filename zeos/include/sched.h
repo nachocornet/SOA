@@ -12,6 +12,13 @@
 #define KERNEL_STACK_SIZE	1024
 #define NR_TASKS		30
 
+enum process_state {
+  ST_RUN = 0,
+  ST_READY,
+  ST_BLOCKED,
+  ST_FREE
+};
+
 struct task_struct {
   int PID;            /* Process ID. This MUST be the first field of the struct. */
   page_table_entry * dir_pages_baseAddr;
@@ -19,6 +26,8 @@ struct task_struct {
   struct list_head list;
   int kernel_esp;
   int quantum;
+  int pending_unblocks;
+  enum process_state state;
 };
 
 union task_union {
@@ -35,6 +44,7 @@ extern char initial_stack[KERNEL_STACK_SIZE];
 extern union task_union task[NR_TASKS];
 extern struct list_head readyqueue;
 extern struct list_head freequeue;
+extern struct list_head blocked;
 extern struct task_struct *idle_task;
 extern struct task_struct *init_task;
 

@@ -29,6 +29,7 @@
 
 .globl custom_page_fault_handler; .type custom_page_fault_handler, @function; .align 0; custom_page_fault_handler:
       call custom_page_fault_routine
+
 .globl syscall_handler_sysenter; .type syscall_handler_sysenter, @function; .align 0; syscall_handler_sysenter:
       push $0x2B
       push %EBP
@@ -42,15 +43,16 @@
       jg sysenter_err
       call *sys_call_table(, %EAX, 0x04)
       jmp sysenter_fin
-sysenter_err:
+      sysenter_err:
       movl $-38, %EAX
-sysenter_fin:
+      sysenter_fin:
       movl %EAX, 0x18(%ESP)
       popl %edx; popl %ecx; popl %ebx; popl %esi; popl %edi; popl %ebp; popl %eax; popl %ds; popl %es; popl %fs; popl %gs
       movl (%ESP), %EDX
       movl 12(%ESP), %ECX
       sti
       sysexit
+
 .globl ret_from_fork; .type ret_from_fork, @function; .align 0; ret_from_fork:
       movl $0, %eax
       jmp sysenter_fin

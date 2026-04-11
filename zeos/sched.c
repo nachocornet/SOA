@@ -12,6 +12,7 @@ char initial_stack[KERNEL_STACK_SIZE]; // Space for the initial system stack
 union task_union task[NR_TASKS] __attribute__((__aligned__(4096)));
 struct list_head freequeue;
 struct list_head readyqueue;
+struct list_head blocked;
 struct task_struct *init_task;
 struct task_struct *idle_task;
 
@@ -115,12 +116,13 @@ void init_idle (void)
 	// 6)
 	t->PID = 0;
 	t->quantum = 1000;
+        t->state = ST_RUN;
+        
+        t->pending_unblocks = 0;
 }
 
 void init_task1(void)
 {
-	// PASO 1: Allocate structures to store process address space
-
 	// 1a) Allocate a new directory
 	int Dir = alloc_frame();
 	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
@@ -200,6 +202,8 @@ void init_task1(void)
 
 	// PASO 8: Define global init_task and initialize it to this init PCB
 	init_task = t;
+        
+
 
 }
 
@@ -208,9 +212,13 @@ void init_sched()
 {
     INIT_LIST_HEAD(&freequeue);
     INIT_LIST_HEAD(&readyqueue);
+    INIT_LIST_HEAD(&blocked);
     
     for (int i = 2; i < NR_TASKS; i++) {
         task[i].task.PID = -1; // Opcional: marquem com a no usat
+        task[i].task.state = ST_FREE;
+        INIT_LIST_HEAD(&(task[i].task.list));
+        task[i].task.pending_unblocks = 0;
         list_add_tail(&(task[i].task.list), &freequeue);
     }
 }
@@ -248,11 +256,17 @@ int needs_sched_rr(void)
 
 void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue)
 {
-	if (dst_queue == NULL) {
-		return;
-	}
-
-	list_add_tail(&t->list, dst_queue);
+    if (t->state != ST_RUN) {
+        list_del(&t->list);
+    }
+    if (dst_queue != NULL) {
+        list_add_tail(&t->list, dst_queue);
+        if (dst_queue == &readyqueue) t->state = ST_READY;
+        else if (dst_queue == &blocked) t->state = ST_BLOCKED;
+        else t->state = ST_FREE;
+    } else {
+        t->state = ST_RUN;
+    }
 }
 
 void sched_next_rr(void)
@@ -262,7 +276,7 @@ void sched_next_rr(void)
 	}
 
 	struct task_struct *next = list_head_to_task_struct(list_first(&readyqueue));
-	list_del(&next->list);
+
 
 	update_process_state_rr(next, NULL);
 	remaining_ticks = get_quantum(next);
