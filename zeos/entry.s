@@ -28,7 +28,14 @@
       iret
 
 .globl custom_page_fault_handler; .type custom_page_fault_handler, @function; .align 0; custom_page_fault_handler:
+      pushl %gs; pushl %fs; pushl %es; pushl %ds; pushl %eax; pushl %ebp; pushl %edi; pushl %esi; pushl %ebx; pushl %ecx; pushl %edx; movl $0x18, %edx; movl %edx, %ds; movl %edx, %es
+      movl 44(%esp), %eax
+      pushl %eax
+      pushl %edx
       call custom_page_fault_routine
+      addl $8, %esp
+      popl %edx; popl %ecx; popl %ebx; popl %esi; popl %edi; popl %ebp; popl %eax; popl %ds; popl %es; popl %fs; popl %gs
+      iret
 
 .globl syscall_handler_sysenter; .type syscall_handler_sysenter, @function; .align 0; syscall_handler_sysenter:
       push $0x2B

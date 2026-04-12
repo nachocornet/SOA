@@ -35,7 +35,7 @@ int __attribute__ ((__section__(".text.main")))
         print_int("[Child] Hello! My PID is: ", getpid());
         // Caso 1: Testeando 'pending_unblocks'
         print("[Child] Delaying to let parent unblock me first...\n");
-        for (int i = 0; i < 1000000; i++) {}
+        for (int i = 0; i < 10000; i++) {}
         print("[Child] Now calling block(). I should NOT sleep because of pending_unblocks!\n");
         block();
         print("[Child] Survived block() successfully!\n");
@@ -59,13 +59,15 @@ int __attribute__ ((__section__(".text.main")))
 
         // Caso 2: Bloqueo normal
         print("[Parent] Delaying to give child time to block normally...\n");
-        for (int i = 0; i < 1000000; i++) {}
+        for (int i = 0; i < 100000000; i++) {}
+
         
         print("[Parent] Testing unblock() on blocked child...\n");
+        print_int("[Parent] pid variable before unblock: ", pid);
         unblock(pid);
         
         print("[Parent] Delaying to let child finish...\n");
-        for (int i = 0; i < 1000000; i++) {}
+        for (int i = 0; i < 10000000; i++) {}
         
         print_int("[Parent] End time: ", gettime());
         print("[Parent] Testing exit(). Goodbye!\n");

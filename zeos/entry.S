@@ -84,7 +84,14 @@ ENTRY(keyboard_handler)
       iret
 
 ENTRY(custom_page_fault_handler)
+      SAVE_ALL
+      movl 44(%esp), %eax
+      pushl %eax
+      pushl %edx
       call custom_page_fault_routine
+      addl $8, %esp
+      RESTORE_ALL
+      iret
 
 ENTRY(syscall_handler_sysenter)
       push $__USER_DS

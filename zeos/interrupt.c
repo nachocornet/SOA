@@ -128,14 +128,13 @@ void keyboard_routine() {
 }
 
 void custom_page_fault_routine(unsigned int error, unsigned int eip) {
-    char buffer[16];
     char hex_str[11] = "0x00000000";
     char *hex_chars = "0123456789ABCDEF";
     unsigned int temp_eip = eip;
     
-     for (int i = 9; i >= 2; i--) {
+    for (int i = 9; i >= 2; i--) {
         hex_str[i] = hex_chars[temp_eip & 0x0F];
-        eip >>= 4;
+        temp_eip >>= 4;
     }
     
     printk("\nProcess generates a PAGE FAULT exception at EIP: 0x");

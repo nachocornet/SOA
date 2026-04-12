@@ -107,6 +107,9 @@ void init_idle (void)
 	tu->stack[KERNEL_STACK_SIZE - 1] = (unsigned long)cpu_idle;
 	tu->stack[KERNEL_STACK_SIZE - 2] = 0;
 	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
+	t->parent = t;
+	INIT_LIST_HEAD(&t->children);
+	INIT_LIST_HEAD(&t->sibling_list);
 	idle_task = t;
 
 	// 5)
@@ -189,8 +192,14 @@ void init_task1(void)
 	writeMSR(0x175, tss.esp0);
 
 	// Initialize kernel_esp for use in fork()
-	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE]);
-
+	tu->stack[KERNEL_STACK_SIZE - 1] = 0;
+	tu->stack[KERNEL_STACK_SIZE - 2] = 0;
+	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
+	t->state = ST_RUN;
+	t->pending_unblocks = 0;
+	t->parent = NULL;
+	INIT_LIST_HEAD(&t->children);
+	INIT_LIST_HEAD(&t->sibling_list);
 
 	// PASO 6: Initialize dir_pages_baseAddr with the new directory
 	t->dir_pages_baseAddr = DirAddress;
@@ -218,6 +227,9 @@ void init_sched()
         task[i].task.PID = -1; // Opcional: marquem com a no usat
         task[i].task.state = ST_FREE;
         INIT_LIST_HEAD(&(task[i].task.list));
+		INIT_LIST_HEAD(&(task[i].task.children));
+		INIT_LIST_HEAD(&(task[i].task.sibling_list));
+		task[i].task.parent = NULL;
         task[i].task.pending_unblocks = 0;
         list_add_tail(&(task[i].task.list), &freequeue);
     }
@@ -272,6 +284,7 @@ void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue)
 void sched_next_rr(void)
 {
 	if (list_empty(&readyqueue)) {
+		task_switch((union task_union *)idle_task);
 		return;
 	}
 
