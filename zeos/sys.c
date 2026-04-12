@@ -82,22 +82,6 @@ int sys_getpid()
     return current()->PID;
 }
 
-int fork_nomem(int frames[], struct task_struct *child) {
-    for (int i = 0; i < NUM_PAG_DATA; ++i)
-        if (frames[i] != -1) free_frame(frames[i]);
-
-    if (child->dir_pages_baseAddr != NULL) {
-        unsigned int dir_frame = ((unsigned int)child->dir_pages_baseAddr) >> 12;
-        unsigned int pt_user_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
-        free_frame(pt_user_frame);
-        free_frame(dir_frame);
-        child->dir_pages_baseAddr = NULL;
-    }
-
-    list_add_tail(&child->list, &freequeue);
-    return -12;
-}
-
 int sys_fork()
 {
     int i;
@@ -134,7 +118,7 @@ int sys_fork()
 
     for (i = 0; i < NUM_PAG_DATA; ++i) {
         frames[i] = alloc_frame();
-        if (frames[i] == -1) return fork_nomem(frames, child);
+        if (frames[i] == -1) goto fork_nomem;
         set_ss_pag(PT_child, i, frames[i], 1);
     }
 
@@ -156,53 +140,63 @@ int sys_fork()
 
     child->PID = next_PID++;
     child->quantum = parent->quantum;
-
+    INIT_LIST_HEAD(&child->children);
+    INIT_LIST_HEAD(&child->sibling);
+    child->parent = parent;
     child->pending_unblocks = 0;
+    list_add_tail(&child->sibling, &parent->children);
 
     /*
-     * Prepare child so first schedule returns through ret_from_fork and then
-     * through the common syscall exit path with EAX=0.
+     * Build the first child kernel context explicitly:
+     * - switch_stack will pop EBP and RET into ret_from_fork
+     * - ret_from_fork jumps to sysenter_fin, which expects the saved
+     *   syscall frame (SAVE_ALL + user return context) on the stack.
      */
     unsigned long parent_ebp = get_ebp();
-    unsigned long ebp_offset = parent_ebp - (unsigned long)parent_u;
-    unsigned long *child_ebp = (unsigned long *)((unsigned long)child_u + ebp_offset);
+    unsigned long offset = parent_ebp - (unsigned long)parent_u;
+    unsigned long *child_ebp = (unsigned long *)((unsigned long)child_u + offset);
 
     child_ebp[0] = 0;
     child_ebp[1] = (unsigned long)ret_from_fork;
+    child_ebp[8] = 0;
     child->kernel_esp = (int)child_ebp;
-
-    child->parent = parent;
-    INIT_LIST_HEAD(&child->children);
-    INIT_LIST_HEAD(&child->sibling_list);
-    list_add_tail(&child->sibling_list, &parent->children);
 
     update_process_state_rr(child, &readyqueue);
     return child->PID;
 
+fork_nomem:
+    for (i = 0; i < NUM_PAG_DATA; ++i)
+        if (frames[i] != -1) free_frame(frames[i]);
+
+    if (child->dir_pages_baseAddr != NULL) {
+        unsigned int dir_frame = ((unsigned int)child->dir_pages_baseAddr) >> 12;
+        unsigned int pt_user_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
+        free_frame(pt_user_frame);
+        free_frame(dir_frame);
+        child->dir_pages_baseAddr = NULL;
+    }
+
+    list_add_tail(&child->list, &freequeue);
+    return -12;
 }
 
 void sys_exit(void) {
     struct task_struct *p = current();
-    page_table_entry *PT = get_PT(p);
     struct list_head *pos, *n;
+    page_table_entry *PT = get_PT(p);
 
-    /* Reparent alive children to idle before destroying current process. */
+    if (p->parent != NULL) {
+        list_del(&p->sibling);
+        p->parent = NULL;
+    }
+
+    /* Reparent alive children to idle task. */
     list_for_each_safe(pos, n, &p->children) {
-        struct task_struct *child = list_entry(pos, struct task_struct, sibling_list);
-        list_del(&child->sibling_list);
+        struct task_struct *child = list_head_to_task_struct(pos);
+        list_del(&child->sibling);
+        list_add_tail(&child->sibling, &idle_task->children);
         child->parent = idle_task;
-        list_add_tail(&child->sibling_list, &idle_task->children);
-        if (child->state == ST_BLOCKED) {
-            update_process_state_rr(child, &readyqueue);
-        }
     }
-
-    if (p->parent != NULL && p->sibling_list.next != NULL && p->sibling_list.prev != NULL) {
-        list_del(&p->sibling_list);
-    }
-    INIT_LIST_HEAD(&p->children);
-    INIT_LIST_HEAD(&p->sibling_list);
-    p->parent = NULL;
 
     // Free user data pages (they are at indices 0 to NUM_PAG_DATA - 1 in the user PT)
     for (int i = 0; i < NUM_PAG_DATA; ++i) {
@@ -223,8 +217,19 @@ void sys_exit(void) {
     }
 
     // Move to freequeue and select next task
+    INIT_LIST_HEAD(&p->children);
+    INIT_LIST_HEAD(&p->sibling);
+    p->PID = -1;
+    p->pending_unblocks = 0;
     update_process_state_rr(p, &freequeue);
-    sched_next_rr();
+
+    if (!list_empty(&readyqueue)) {
+        sched_next_rr();
+    } else {
+        task_switch((union task_union *)idle_task);
+    }
+
+    while (1);
 }
 
 void sys_block(void)
@@ -243,48 +248,22 @@ void sys_block(void)
     } else {
         task_switch((union task_union *)idle_task);
     }
-
 }
 
 int sys_unblock(int pid)
 {
-    struct task_struct *child = NULL;
     struct task_struct *parent = current();
-    int is_child = 0;
+    struct task_struct *child = NULL;
 
-    for (int i = 0; i < NR_TASKS; i++) {
-        if (task[i].task.PID == pid) {
-            child = &task[i].task;
+    for (int i = 0; i < NR_TASKS; ++i) {
+        struct task_struct *t = &task[i].task;
+        if (t->PID == pid && t->parent == parent) {
+            child = t;
             break;
         }
     }
 
     if (child == NULL) return -1;
-
-    if (child->parent == parent) {
-        is_child = 1;
-    } else {
-        struct list_head *pos;
-        list_for_each(pos, &parent->children) {
-            struct task_struct *candidate = list_entry(pos, struct task_struct, sibling_list);
-            if (candidate == child) {
-                is_child = 1;
-                break;
-            }
-        }
-    }
-
-    if (!is_child) {
-        if (!list_empty(&parent->children)) {
-            struct task_struct *only_child = list_entry(list_first(&parent->children), struct task_struct, sibling_list);
-            if (list_is_last(&only_child->sibling_list, &parent->children)) {
-                child = only_child;
-                is_child = 1;
-            }
-        }
-    }
-
-    if (!is_child) return -1;
 
     if (child->state == ST_BLOCKED) {
         update_process_state_rr(child, &readyqueue);

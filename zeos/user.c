@@ -1,10 +1,14 @@
 #include <libc.h>
 
-void print(char* msg) {
+static int child_pid_global = -1;
+
+static void print(char *msg)
+{
     write(1, msg, strlen(msg));
 }
 
-void print_int(char* msg, int val) {
+static void print_int(char *msg, int val)
+{
     char buff[16];
     print(msg);
     itoa(val, buff);
@@ -12,8 +16,8 @@ void print_int(char* msg, int val) {
     print("\n");
 }
 
-int __attribute__ ((__section__(".text.main")))
-  main(void)
+int __attribute__((__section__(".text.main")))
+main(void)
 {
     print("\n------- ZEOS USER TEST SUITE -------\n");
 
@@ -23,7 +27,7 @@ int __attribute__ ((__section__(".text.main")))
     print("Testing write & getpid...\n");
     print_int("My PID: ", getpid());
 
-    print("Testing fork...\n");
+    print("Testing fork/block/unblock edge cases...\n");
     int pid = fork();
 
     if (pid < 0) {
@@ -31,48 +35,57 @@ int __attribute__ ((__section__(".text.main")))
         perror();
     }
     else if (pid == 0) {
-        // Processo Hijo
-        print_int("[Child] Hello! My PID is: ", getpid());
-        // Caso 1: Testeando 'pending_unblocks'
-        print("[Child] Delaying to let parent unblock me first...\n");
-        for (int i = 0; i < 10000; i++) {}
-        print("[Child] Now calling block(). I should NOT sleep because of pending_unblocks!\n");
-        block();
-        print("[Child] Survived block() successfully!\n");
+        print_int("[Child] PID: ", getpid());
 
-        // Caso 2: Bloqueo normal
-        print("[Child] Testing normal block(). Sleeping...\n");
-        block(); 
-        
-        print("[Child] Woke up from normal block! Succesfully unblocked.\n");
+        if (unblock(getpid()) < 0) print("[Child] unblock(self) should fail: PASS\n");
+        else print("[Child] unblock(self) should fail: FAIL\n");
+
+        if (unblock(1) < 0) print("[Child] unblock(parent) should fail: PASS\n");
+        else print("[Child] unblock(parent) should fail: FAIL\n");
+
+        if (unblock(9999) < 0) print("[Child] unblock(invalid pid) should fail: PASS\n");
+        else print("[Child] unblock(invalid pid) should fail: FAIL\n");
+
+        print("[Child] Delay before block #1 (preemptive unblock expected)...\n");
+        for (int i = 0; i < 1200000; i++) {}
+
+        print("[Child] block #1 should NOT sleep\n");
+        block();
+        print("[Child] block #1 PASS\n");
+
+        print("[Child] block #2 should sleep until parent unblocks\n");
+        int t_before = gettime();
+        block();
+        int t_after = gettime();
+
+        if (t_after > t_before) print("[Child] block #2 slept and woke: PASS\n");
+        else print("[Child] block #2 slept and woke: FAIL\n");
+
         print_int("[Child] End time: ", gettime());
-        print("[Child] Testing exit(). Goodbye!\n");
+        print("[Child] exit\n");
         exit();
     }
     else {
-        // Processo Padre
-        print_int("[Parent] I created a child with PID: ", pid);
-        
-        // Caso 1: Testeando 'pending_unblocks'
-        print("[Parent] Testing unblock() on child before it blocks (pending_unblock)...\n");
-        unblock(pid);
+        child_pid_global = pid;
+        print_int("[Parent] Child PID: ", child_pid_global);
 
-        // Caso 2: Bloqueo normal
-        print("[Parent] Delaying to give child time to block normally...\n");
-        for (int i = 0; i < 100000000; i++) {}
+        if (unblock(child_pid_global) == 0) print("[Parent] preemptive unblock should pass: PASS\n");
+        else print("[Parent] preemptive unblock should pass: FAIL\n");
 
-        
-        print("[Parent] Testing unblock() on blocked child...\n");
-        print_int("[Parent] pid variable before unblock: ", pid);
-        unblock(pid);
-        
-        print("[Parent] Delaying to let child finish...\n");
-        for (int i = 0; i < 10000000; i++) {}
-        
+        print("[Parent] Delay to let child reach block #2...\n");
+        for (int i = 0; i < 1800000; i++) {}
+
+        if (unblock(child_pid_global) == 0) print("[Parent] unblock(blocked child) should pass: PASS\n");
+        else print("[Parent] unblock(blocked child) should pass: FAIL\n");
+
+        print("[Parent] Final delay...\n");
+        for (int i = 0; i < 2000000; i++) {}
+
         print_int("[Parent] End time: ", gettime());
-        print("[Parent] Testing exit(). Goodbye!\n");
+        print("[Parent] exit\n");
         exit();
     }
-    
-    while(1);
+
+    while (1)
+        ;
 }

@@ -24,7 +24,7 @@ extern void syscall_handler_sysenter();
 
 void enable_sysenter(void) {
   writeMSR(0x174, __KERNEL_CS); // SYSENTER_CS_MSR
-  writeMSR(0x175, (unsigned int)&(((union task_union *)init_task)->stack[KERNEL_STACK_SIZE])); // SYSENTER_ESP_MSR
+  writeMSR(0x175, tss.esp0); // SYSENTER_ESP_MSR
   writeMSR(0x176, (unsigned int)syscall_handler_sysenter); // SYS
 }
 

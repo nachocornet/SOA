@@ -24,9 +24,9 @@ struct task_struct {
   page_table_entry * dir_pages_baseAddr;
 
   struct list_head list;
-  struct task_struct *parent;
   struct list_head children;
-  struct list_head sibling_list;
+  struct list_head sibling;
+  struct task_struct *parent;
   int kernel_esp;
   int quantum;
   int pending_unblocks;

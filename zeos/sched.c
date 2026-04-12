@@ -107,9 +107,6 @@ void init_idle (void)
 	tu->stack[KERNEL_STACK_SIZE - 1] = (unsigned long)cpu_idle;
 	tu->stack[KERNEL_STACK_SIZE - 2] = 0;
 	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
-	t->parent = t;
-	INIT_LIST_HEAD(&t->children);
-	INIT_LIST_HEAD(&t->sibling_list);
 	idle_task = t;
 
 	// 5)
@@ -119,9 +116,15 @@ void init_idle (void)
 	// 6)
 	t->PID = 0;
 	t->quantum = 1000;
-        t->state = ST_RUN;
-        
-        t->pending_unblocks = 0;
+	t->state = ST_RUN;
+	INIT_LIST_HEAD(&t->children);
+	INIT_LIST_HEAD(&t->sibling);
+	t->parent = NULL;
+	t->pending_unblocks = 0;
+
+	/* Idle is the parent of init process. */
+	init_task->parent = t;
+	list_add_tail(&init_task->sibling, &t->children);
 }
 
 void init_task1(void)
@@ -192,14 +195,8 @@ void init_task1(void)
 	writeMSR(0x175, tss.esp0);
 
 	// Initialize kernel_esp for use in fork()
-	tu->stack[KERNEL_STACK_SIZE - 1] = 0;
-	tu->stack[KERNEL_STACK_SIZE - 2] = 0;
-	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE - 2]);
-	t->state = ST_RUN;
-	t->pending_unblocks = 0;
-	t->parent = NULL;
-	INIT_LIST_HEAD(&t->children);
-	INIT_LIST_HEAD(&t->sibling_list);
+	t->kernel_esp = (int)&(tu->stack[KERNEL_STACK_SIZE]);
+
 
 	// PASO 6: Initialize dir_pages_baseAddr with the new directory
 	t->dir_pages_baseAddr = DirAddress;
@@ -211,8 +208,11 @@ void init_task1(void)
 
 	// PASO 8: Define global init_task and initialize it to this init PCB
 	init_task = t;
-        
-
+	INIT_LIST_HEAD(&t->children);
+	INIT_LIST_HEAD(&t->sibling);
+	t->parent = NULL;
+	t->pending_unblocks = 0;
+	t->state = ST_RUN;
 
 }
 
@@ -228,7 +228,7 @@ void init_sched()
         task[i].task.state = ST_FREE;
         INIT_LIST_HEAD(&(task[i].task.list));
 		INIT_LIST_HEAD(&(task[i].task.children));
-		INIT_LIST_HEAD(&(task[i].task.sibling_list));
+		INIT_LIST_HEAD(&(task[i].task.sibling));
 		task[i].task.parent = NULL;
         task[i].task.pending_unblocks = 0;
         list_add_tail(&(task[i].task.list), &freequeue);
@@ -284,7 +284,6 @@ void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue)
 void sched_next_rr(void)
 {
 	if (list_empty(&readyqueue)) {
-		task_switch((union task_union *)idle_task);
 		return;
 	}
 

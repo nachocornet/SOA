@@ -46,6 +46,7 @@ fin_write:
 ENTRY(gettime)
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
     
     movl $10, %eax      // 10 = syscall de gettime
     
@@ -71,6 +72,7 @@ return_from_gettime:
     // así que no hace falta gestionar el 'errno' aquí.
     // Devolvemos lo que haya en EAX directamente.
     
+    popl %ebx
     popl %ebp
     ret
 
@@ -78,6 +80,7 @@ return_from_gettime:
 ENTRY(getpid)
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -105,12 +108,14 @@ return_getpid:
     movl $-1, %eax
 
 fi_getpid:
+    popl %ebx
     popl %ebp
     ret
 
 ENTRY(fork)
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -137,12 +142,14 @@ return_fork:
     movl $-1, %eax
 
 fi_fork:
+    popl %ebx
     popl %ebp
     ret
 
 ENTRY(exit)
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -170,12 +177,14 @@ return_exit:
     movl $-1, %eax
 
 fi_exit:
+    popl %ebx
     popl %ebp
     ret
 
 ENTRY(block)
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -194,12 +203,14 @@ return_block:
     popl %edx
     popl %ecx
 
+    popl %ebx
     popl %ebp
     ret
 
 ENTRY(unblock)
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -227,6 +238,7 @@ return_unblock:
     movl $-1, %eax
 
 fi_unblock:
+    popl %ebx
     popl %ebp
     ret
 
