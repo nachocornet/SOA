@@ -37,14 +37,14 @@ main(void)
     else if (pid == 0) {
         print_int("[Child] PID: ", getpid());
 
-        if (unblock(getpid()) < 0) print("[Child] unblock(self) should fail: PASS\n");
-        else print("[Child] unblock(self) should fail: FAIL\n");
+        if (unblock(getpid()) < 0) print("[Child] unblock(self) expected failure observed: PASS\n");
+        else print("[Child] unblock(self) expected failure observed: FAIL\n");
 
-        if (unblock(1) < 0) print("[Child] unblock(parent) should fail: PASS\n");
-        else print("[Child] unblock(parent) should fail: FAIL\n");
+        if (unblock(1) < 0) print("[Child] unblock(parent) expected failure observed: PASS\n");
+        else print("[Child] unblock(parent) expected failure observed: FAIL\n");
 
-        if (unblock(9999) < 0) print("[Child] unblock(invalid pid) should fail: PASS\n");
-        else print("[Child] unblock(invalid pid) should fail: FAIL\n");
+        if (unblock(9999) < 0) print("[Child] unblock(invalid pid) expected failure observed: PASS\n");
+        else print("[Child] unblock(invalid pid) expected failure observed: FAIL\n");
 
         print("[Child] Delay before block #1 (preemptive unblock expected)...\n");
         for (int i = 0; i < 1200000; i++) {}
