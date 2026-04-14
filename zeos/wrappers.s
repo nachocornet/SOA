@@ -53,6 +53,7 @@ fin_write:
 .globl gettime; .type gettime, @function; .align 0; gettime:
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     movl $10, %eax
 
@@ -78,6 +79,7 @@ return_from_gettime:
 
 
 
+    popl %ebx
     popl %ebp
     ret
 
@@ -85,6 +87,7 @@ return_from_gettime:
 .globl getpid; .type getpid, @function; .align 0; getpid:
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -112,12 +115,14 @@ return_getpid:
     movl $-1, %eax
 
 fi_getpid:
+    popl %ebx
     popl %ebp
     ret
 
 .globl fork; .type fork, @function; .align 0; fork:
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -144,12 +149,14 @@ return_fork:
     movl $-1, %eax
 
 fi_fork:
+    popl %ebx
     popl %ebp
     ret
 
 .globl exit; .type exit, @function; .align 0; exit:
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -177,12 +184,14 @@ return_exit:
     movl $-1, %eax
 
 fi_exit:
+    popl %ebx
     popl %ebp
     ret
 
 .globl block; .type block, @function; .align 0; block:
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -201,12 +210,14 @@ return_block:
     popl %edx
     popl %ecx
 
+    popl %ebx
     popl %ebp
     ret
 
 .globl unblock; .type unblock, @function; .align 0; unblock:
     pushl %ebp
     movl %esp, %ebp
+    pushl %ebx
 
     pushl %ecx
     pushl %edx
@@ -234,5 +245,6 @@ return_unblock:
     movl $-1, %eax
 
 fi_unblock:
+    popl %ebx
     popl %ebp
     ret

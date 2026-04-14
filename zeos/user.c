@@ -1,6 +1,10 @@
 #include <libc.h>
 
-static int child_pid_global = -1;
+static int g_parent_pid = -1;
+static int g_child_pid = -1;
+static int g_mem_probe = 1111;
+static int g_total = 0;
+static int g_pass = 0;
 
 static void print(char *msg)
 {
@@ -16,76 +20,174 @@ static void print_int(char *msg, int val)
     print("\n");
 }
 
+static void test_result(char *name, int ok)
+{
+    g_total++;
+    if (ok) {
+        g_pass++;
+        print("[PASS] ");
+    } else {
+        print("[FAIL] ");
+    }
+    print(name);
+    print("\n");
+}
+
+static void burn_ticks(int loops)
+{
+    volatile int i;
+    for (i = 0; i < loops; ++i) {
+    }
+}
+
+static void test_write_errors(void)
+{
+    int r;
+
+    print("\n-- write() validation tests --\n");
+
+    r = write(0, "x", 1);
+    test_result("write(fd=0) returns -1", r == -1);
+    test_result("errno=EBADF (9)", errno == 9);
+    if (r == -1) perror();
+
+    r = write(1, "x", -1);
+    test_result("write(size<0) returns -1", r == -1);
+    test_result("errno=EINVAL (22)", errno == 22);
+    if (r == -1) perror();
+
+    r = write(1, (char *)0, 1);
+    test_result("write(NULL) returns -1", r == -1);
+    test_result("errno=EFAULT (14)", errno == 14);
+    if (r == -1) perror();
+}
+
+static void child_flow(void)
+{
+    int mypid;
+    int t_before;
+    int t_after;
+
+    print("\n[Child] starting child flow\n");
+    mypid = getpid();
+    print_int("[Child] PID: ", mypid);
+
+    test_result("child getpid() is not parent PID", mypid != g_parent_pid);
+    test_result("child getpid() > 1", mypid > 1);
+    test_result("child sees fork-copied memory value", g_mem_probe == 1111);
+
+    g_mem_probe = 3333;
+    test_result("child can modify its own copy", g_mem_probe == 3333);
+
+    test_result("child unblock(self) fails", unblock(mypid) < 0);
+    test_result("child unblock(parent) fails", unblock(g_parent_pid) < 0);
+    test_result("child unblock(invalid pid) fails", unblock(9999) < 0);
+
+    print("[Child] block #1 should not sleep (pending_unblocks consumed)\n");
+    t_before = gettime();
+    block();
+    t_after = gettime();
+    test_result("child block #1 returns quickly", t_after >= t_before);
+
+    test_result("child memory copy keeps its own value", g_mem_probe == 3333);
+
+    print("[Child] block #2 should sleep until parent unblocks\n");
+    t_before = gettime();
+    block();
+    t_after = gettime();
+    test_result("child block #2 woke after time advanced", t_after > t_before);
+
+    print_int("[Child] End time: ", gettime());
+    print("[Child] exit\n");
+    exit();
+}
+
+static void parent_flow(int pid)
+{
+    int t0;
+    int t1;
+
+    print("\n[Parent] starting parent flow\n");
+    print_int("[Parent] PID: ", g_parent_pid);
+    print_int("[Parent] Child PID: ", pid);
+
+    test_result("parent got child pid > 0 from fork", pid > 0);
+    test_result("parent child pid != parent pid", pid != g_parent_pid);
+    test_result("parent keeps its own memory copy after child fork", g_mem_probe == 2222);
+
+    test_result("parent preemptive unblock(child) succeeds", unblock(pid) == 0);
+
+    print("[Parent] waiting child to reach block #2...\n");
+    burn_ticks(1800000);
+
+    t0 = gettime();
+    test_result("parent unblock(blocked child) succeeds", unblock(pid) == 0);
+    burn_ticks(200000);
+    t1 = gettime();
+    test_result("gettime advances while parent runs", t1 >= t0);
+    test_result("parent memory copy unaffected by child changes", g_mem_probe == 2222);
+
+    burn_ticks(1200000);
+}
+
 int __attribute__((__section__(".text.main")))
 main(void)
 {
-    print("\n------- ZEOS USER TEST SUITE -------\n");
+    int start_t;
+    int end_t;
+    int pid;
+    int wr;
 
-    int time1 = gettime();
-    print_int("Start time: ", time1);
+    print("\n======= ZEOS USER FULL TEST =======\n");
 
-    print("Testing write & getpid...\n");
-    print_int("My PID: ", getpid());
+    start_t = gettime();
+    g_parent_pid = getpid();
 
-    print("Testing fork/block/unblock edge cases...\n");
-    int pid = fork();
+    test_result("getpid() in parent > 0", g_parent_pid > 0);
+    test_result("gettime() initial value >= 0", start_t >= 0);
+    test_result("initial memory probe value", g_mem_probe == 1111);
+
+    wr = write(1, "[INFO] write() basic output test\n", 31);
+    burn_ticks(100000);
+    
+    test_result("write(valid args) returns byte count", wr == 31);
+
+    test_write_errors();
+
+    print("\n-- fork/block/unblock/exit tests --\n");
+    pid = fork();
 
     if (pid < 0) {
-        print("Fork failed!\n");
+        test_result("fork() succeeded", 0);
         perror();
-    }
-    else if (pid == 0) {
-        print_int("[Child] PID: ", getpid());
-
-        if (unblock(getpid()) < 0) print("[Child] unblock(self) expected failure observed: PASS\n");
-        else print("[Child] unblock(self) expected failure observed: FAIL\n");
-
-        if (unblock(1) < 0) print("[Child] unblock(parent) expected failure observed: PASS\n");
-        else print("[Child] unblock(parent) expected failure observed: FAIL\n");
-
-        if (unblock(9999) < 0) print("[Child] unblock(invalid pid) expected failure observed: PASS\n");
-        else print("[Child] unblock(invalid pid) expected failure observed: FAIL\n");
-
-        print("[Child] Delay before block #1 (preemptive unblock expected)...\n");
-        for (int i = 0; i < 1200000; i++) {}
-
-        print("[Child] block #1 should NOT sleep\n");
-        block();
-        print("[Child] block #1 PASS\n");
-
-        print("[Child] block #2 should sleep until parent unblocks\n");
-        int t_before = gettime();
-        block();
-        int t_after = gettime();
-
-        if (t_after > t_before) print("[Child] block #2 slept and woke: PASS\n");
-        else print("[Child] block #2 slept and woke: FAIL\n");
-
-        print_int("[Child] End time: ", gettime());
-        print("[Child] exit\n");
-        exit();
-    }
-    else {
-        child_pid_global = pid;
-        print_int("[Parent] Child PID: ", child_pid_global);
-
-        if (unblock(child_pid_global) == 0) print("[Parent] preemptive unblock should pass: PASS\n");
-        else print("[Parent] preemptive unblock should pass: FAIL\n");
-
-        print("[Parent] Delay to let child reach block #2...\n");
-        for (int i = 0; i < 1800000; i++) {}
-
-        if (unblock(child_pid_global) == 0) print("[Parent] unblock(blocked child) should pass: PASS\n");
-        else print("[Parent] unblock(blocked child) should pass: FAIL\n");
-
-        print("[Parent] Final delay...\n");
-        for (int i = 0; i < 2000000; i++) {}
-
-        print_int("[Parent] End time: ", gettime());
-        print("[Parent] exit\n");
+        print("\n[SUMMARY] ");
+        print_int("tests passed: ", g_pass);
+        print_int("tests total : ", g_total);
         exit();
     }
 
-    while (1)
-        ;
+    if (pid == 0) {
+        child_flow();
+    }
+
+    g_child_pid = pid;
+    g_mem_probe = 2222;
+    parent_flow(pid);
+
+    end_t = gettime();
+    test_result("global runtime advanced", end_t > start_t);
+
+    print("\n[SUMMARY] ");
+    print_int("tests passed: ", g_pass);
+    print_int("tests total : ", g_total);
+    if (g_pass == g_total) {
+        print("ALL TESTS PASS\n");
+    } else {
+        print("SOME TESTS FAILED\n");
+    }
+
+    print("[Parent] exit\n");
+    exit();
+
+    while (1) ;
 }

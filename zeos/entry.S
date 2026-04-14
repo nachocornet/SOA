@@ -85,7 +85,8 @@ ENTRY(keyboard_handler)
 
 ENTRY(custom_page_fault_handler)
       SAVE_ALL
-      movl 44(%esp), %eax
+      movl 48(%esp), %eax
+      movl 44(%esp), %edx
       pushl %eax
       pushl %edx
       call custom_page_fault_routine

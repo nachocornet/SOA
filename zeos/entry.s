@@ -29,7 +29,8 @@
 
 .globl custom_page_fault_handler; .type custom_page_fault_handler, @function; .align 0; custom_page_fault_handler:
       pushl %gs; pushl %fs; pushl %es; pushl %ds; pushl %eax; pushl %ebp; pushl %edi; pushl %esi; pushl %ebx; pushl %ecx; pushl %edx; movl $0x18, %edx; movl %edx, %ds; movl %edx, %es
-      movl 44(%esp), %eax
+      movl 48(%esp), %eax
+      movl 44(%esp), %edx
       pushl %eax
       pushl %edx
       call custom_page_fault_routine

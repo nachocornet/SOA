@@ -53,7 +53,7 @@ int sys_write(int fd, char *buffer, int size) {
     
     if (buffer == NULL) return -14; 
     error = access_ok(ESCRIPTURA, buffer, size);
-    if (error < 0) return error;
+    if (!error) return -14;
 
     while (bytes_left > 0) {
         int chunk_size = (bytes_left > 256) ? 256 : bytes_left;
@@ -65,7 +65,7 @@ int sys_write(int fd, char *buffer, int size) {
         bytes_written += chunk_size;
         bytes_left -= chunk_size;
     }
-
+    
     return bytes_written; 
 }
 
@@ -80,6 +80,22 @@ int sys_gettime()
 int sys_getpid()
 {
     return current()->PID;
+}
+
+int fork_nomem(int *frames, struct task_struct *child) {
+    for (int i = 0; i < NUM_PAG_DATA; ++i)
+        if (frames[i] != -1) free_frame(frames[i]);
+
+    if (child->dir_pages_baseAddr != NULL) {
+        unsigned int dir_frame = ((unsigned int)child->dir_pages_baseAddr) >> 12;
+        unsigned int pt_user_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
+        free_frame(pt_user_frame);
+        free_frame(dir_frame);
+        child->dir_pages_baseAddr = NULL;
+    }
+
+    list_add_tail(&child->list, &freequeue);
+    return -12;
 }
 
 int sys_fork()
@@ -118,7 +134,7 @@ int sys_fork()
 
     for (i = 0; i < NUM_PAG_DATA; ++i) {
         frames[i] = alloc_frame();
-        if (frames[i] == -1) goto fork_nomem;
+        if (frames[i] == -1) return fork_nomem(frames, child);
         set_ss_pag(PT_child, i, frames[i], 1);
     }
 
@@ -164,21 +180,8 @@ int sys_fork()
     update_process_state_rr(child, &readyqueue);
     return child->PID;
 
-fork_nomem:
-    for (i = 0; i < NUM_PAG_DATA; ++i)
-        if (frames[i] != -1) free_frame(frames[i]);
-
-    if (child->dir_pages_baseAddr != NULL) {
-        unsigned int dir_frame = ((unsigned int)child->dir_pages_baseAddr) >> 12;
-        unsigned int pt_user_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
-        free_frame(pt_user_frame);
-        free_frame(dir_frame);
-        child->dir_pages_baseAddr = NULL;
-    }
-
-    list_add_tail(&child->list, &freequeue);
-    return -12;
 }
+
 
 void sys_exit(void) {
     struct task_struct *p = current();
@@ -254,7 +257,7 @@ int sys_unblock(int pid)
 {
     struct task_struct *parent = current();
     struct task_struct *child = NULL;
-
+    
     for (int i = 0; i < NR_TASKS; ++i) {
         struct task_struct *t = &task[i].task;
         if (t->PID == pid && t->parent == parent) {
