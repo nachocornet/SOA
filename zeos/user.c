@@ -137,7 +137,6 @@ main(void)
     int end_t;
     int pid;
     int wr;
-    char *msg;
 
     print("\n======= ZEOS USER FULL TEST =======\n");
 
@@ -148,11 +147,10 @@ main(void)
     test_result("gettime() initial value >= 0", start_t >= 0);
     test_result("initial memory probe value", g_mem_probe == 1111);
 
-    msg = "[INFO] write() basic output test\n";
-    wr = write(1, msg, strlen(msg));
+    wr = write(1, "[INFO] write() basic output test\n", 31);
     burn_ticks(100000);
     
-    test_result("write(valid args) returns byte count", wr == (int)strlen(msg));
+    test_result("write(valid args) returns byte count", wr == 31);
 
     test_write_errors();
 

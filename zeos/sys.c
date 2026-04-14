@@ -174,6 +174,7 @@ int sys_fork()
 
     child_ebp[0] = 0;
     child_ebp[1] = (unsigned long)ret_from_fork;
+    child_ebp[8] = 0;
     child->kernel_esp = (int)child_ebp;
 
     update_process_state_rr(child, &readyqueue);
