@@ -172,8 +172,9 @@ int sys_fork()
     unsigned long offset = parent_ebp - (unsigned long)parent_u;
     unsigned long *child_ebp = (unsigned long *)((unsigned long)child_u + offset);
 
-    child_ebp[0] = 0;
-    child_ebp[1] = (unsigned long)ret_from_fork;
+    child_ebp[-1] = 0;
+    child_ebp[0] = (unsigned long)ret_from_fork;
+    --child_ebp;
     child->kernel_esp = (int)child_ebp;
 
     update_process_state_rr(child, &readyqueue);

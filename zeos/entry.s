@@ -63,4 +63,4 @@
 
 .globl ret_from_fork; .type ret_from_fork, @function; .align 0; ret_from_fork:
       movl $0, %eax
-      jmp sysenter_fin
+      ret

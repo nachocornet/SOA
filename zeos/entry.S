@@ -119,4 +119,5 @@ ENTRY(syscall_handler_sysenter)
 
 ENTRY(ret_from_fork)
       movl $0, %eax
-      jmp sysenter_fin
+      ret
+//      jmp sysenter_fin
