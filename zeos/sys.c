@@ -94,7 +94,7 @@ int fork_nomem(int *frames, struct task_struct *child) {
         child->dir_pages_baseAddr = NULL;
     }
 
-    list_add_tail(&child->list, &freequeue);
+    free_task_struct(child);
     return -12;
 }
 
@@ -106,11 +106,8 @@ int sys_fork()
 
     for (i = 0; i < NUM_PAG_DATA; ++i) frames[i] = -1;
 
-    if (list_empty(&freequeue)) return -12; /* ENOMEM */
-
-    struct list_head *free_item = list_first(&freequeue);
-    list_del(free_item);
-    struct task_struct *child = list_head_to_task_struct(free_item);
+    struct task_struct *child = alloc_task_struct();
+    if (child == NULL) return -12; /* ENOMEM */
 
     union task_union *parent_u = (union task_union *)parent;
     union task_union *child_u  = (union task_union *)child;
@@ -121,7 +118,7 @@ int sys_fork()
     child->dir_pages_baseAddr = NULL;
     allocate_DIR(child);
     if (child->dir_pages_baseAddr == NULL) {
-        list_add_tail(&child->list, &freequeue);
+        free_task_struct(child);
         return -12;
     }
 
@@ -188,6 +185,8 @@ void sys_exit(void) {
     struct list_head *pos, *n;
     page_table_entry *PT = get_PT(p);
 
+    reap_terminated_tasks();
+
     if (p->parent != NULL) {
         list_del(&p->sibling);
         p->parent = NULL;
@@ -195,7 +194,7 @@ void sys_exit(void) {
 
     /* Reparent alive children to idle task. */
     list_for_each_safe(pos, n, &p->children) {
-        struct task_struct *child = list_head_to_task_struct(pos);
+        struct task_struct *child = list_entry(pos, struct task_struct, sibling);
         list_del(&child->sibling);
         list_add_tail(&child->sibling, &idle_task->children);
         child->parent = idle_task;
@@ -219,12 +218,13 @@ void sys_exit(void) {
         p->dir_pages_baseAddr = NULL;
     }
 
-    // Move to freequeue and select next task
+    // Defer releasing the PCB page until we are running on another kernel stack
     INIT_LIST_HEAD(&p->children);
     INIT_LIST_HEAD(&p->sibling);
     p->PID = -1;
     p->pending_unblocks = 0;
-    update_process_state_rr(p, &freequeue);
+    p->state = ST_FREE;
+    defer_free_current_task(p);
 
     if (!list_empty(&readyqueue)) {
         sched_next_rr();
@@ -257,10 +257,11 @@ int sys_unblock(int pid)
 {
     struct task_struct *parent = current();
     struct task_struct *child = NULL;
+    struct list_head *pos;
     
-    for (int i = 0; i < NR_TASKS; ++i) {
-        struct task_struct *t = &task[i].task;
-        if (t->PID == pid && t->parent == parent) {
+    list_for_each(pos, &parent->children) {
+        struct task_struct *t = list_entry(pos, struct task_struct, sibling);
+        if (t->PID == pid) {
             child = t;
             break;
         }

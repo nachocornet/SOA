@@ -9,8 +9,6 @@
 
 char initial_stack[KERNEL_STACK_SIZE]; // Space for the initial system stack
 
-union task_union task[NR_TASKS] __attribute__((__aligned__(4096)));
-struct list_head freequeue;
 struct list_head readyqueue;
 struct list_head blocked;
 struct task_struct *init_task;
@@ -20,10 +18,72 @@ int PT_system;
 page_table_entry *PT_systemAddress;
 
 static int remaining_ticks;
+static int active_tasks;
+static struct task_struct *pending_reap;
 
 extern void writeMSR(unsigned int msr_number, unsigned int value);
 extern void task_switch(union task_union *new);
 extern void switch_stack(int *save_ebp, int *new_esp);
+
+struct task_struct *alloc_task_struct(void)
+{
+	if (PT_systemAddress == NULL) return NULL;
+	if (active_tasks >= NR_TASKS) return NULL;
+
+	int pcb_frame = alloc_frame();
+	if (pcb_frame == -1) return NULL;
+
+	set_ss_pag(PT_systemAddress, pcb_frame, pcb_frame, 0);
+	
+	// Hacer flush TLB solo si ya está la paginación activada
+	if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
+
+	union task_union *tu = (union task_union *)(pcb_frame << 12);
+	for (int i = 0; i < KERNEL_STACK_SIZE; ++i) tu->stack[i] = 0;
+
+	tu->task.PID = -1;
+	tu->task.dir_pages_baseAddr = NULL;
+	INIT_LIST_HEAD(&tu->task.list);
+	INIT_LIST_HEAD(&tu->task.children);
+	INIT_LIST_HEAD(&tu->task.sibling);
+	tu->task.parent = NULL;
+	tu->task.kernel_esp = 0;
+	tu->task.quantum = 0;
+	tu->task.pending_unblocks = 0;
+	tu->task.state = ST_FREE;
+
+	active_tasks++;
+	return &tu->task;
+}
+
+void free_task_struct(struct task_struct *t)
+{
+	if (t == NULL) return;
+
+	unsigned int pcb_frame = ((unsigned int)t) >> 12;
+	if (PT_systemAddress != NULL) {
+		del_ss_pag(PT_systemAddress, pcb_frame);
+		if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
+	}
+	free_frame(pcb_frame);
+	if (active_tasks > 0) active_tasks--;
+}
+
+void defer_free_current_task(struct task_struct *t)
+{
+	if (pending_reap != NULL) {
+		free_task_struct(pending_reap);
+	}
+	pending_reap = t;
+}
+
+void reap_terminated_tasks(void)
+{
+	if (pending_reap != NULL && pending_reap != current()) {
+		free_task_struct(pending_reap);
+		pending_reap = NULL;
+	}
+}
 
 void allocate_DIR(struct task_struct *t) {
 	int Dir = alloc_frame();
@@ -83,8 +143,18 @@ void cpu_idle(void)
 
 void init_idle (void)
 {
-	// 1) 
+	// 1)
+	struct task_struct *t = alloc_task_struct();
+	if (t == NULL) return;
+
 	int Dir = alloc_frame();
+	if (Dir == -1) {
+		free_task_struct(t);
+		return;
+	}
+
+	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
+
 	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
 	clear_page_table(DirAddress);
 
@@ -92,12 +162,8 @@ void init_idle (void)
 	DirAddress[0].bits.pbase_addr = PT_system;
 	DirAddress[0].bits.rw = 1;
 	DirAddress[0].bits.present = 1;
-	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
 
 	// 4)
-	struct list_head *first = list_first(&freequeue);
-	list_del(first);
-	struct task_struct *t = list_head_to_task_struct(first);
 	
 	// 2)
 	t->dir_pages_baseAddr = DirAddress;
@@ -173,9 +239,12 @@ void init_task1(void)
 
 
 	// PASO 2: Allocate a new struct task_struct
-	struct list_head *first = list_first(&freequeue);
-	list_del(first);
-	struct task_struct *t = list_head_to_task_struct(first);
+	struct task_struct *t = alloc_task_struct();
+	if (t == NULL) {
+		free_frame(PT_user);
+		free_frame(Dir);
+		return;
+	}
 
 
 	// PASO 3: Map PCB in the system page table
@@ -219,20 +288,10 @@ void init_task1(void)
 
 void init_sched()
 {
-    INIT_LIST_HEAD(&freequeue);
     INIT_LIST_HEAD(&readyqueue);
     INIT_LIST_HEAD(&blocked);
-    
-    for (int i = 2; i < NR_TASKS; i++) {
-        task[i].task.PID = -1; // Opcional: marquem com a no usat
-        task[i].task.state = ST_FREE;
-        INIT_LIST_HEAD(&(task[i].task.list));
-		INIT_LIST_HEAD(&(task[i].task.children));
-		INIT_LIST_HEAD(&(task[i].task.sibling));
-		task[i].task.parent = NULL;
-        task[i].task.pending_unblocks = 0;
-        list_add_tail(&(task[i].task.list), &freequeue);
-    }
+	active_tasks = 0;
+	pending_reap = NULL;
 }
 
 void inner_task_switch(union task_union *new) {
@@ -297,6 +356,8 @@ void sched_next_rr(void)
 
 void schedule(void)
 {
+	reap_terminated_tasks();
+
 	update_sched_data_rr();
 
 	if (!needs_sched_rr()) {

@@ -44,12 +44,15 @@ union task_union {
 extern char initial_stack[KERNEL_STACK_SIZE];
 #define INITIAL_ESP             (DWord) &initial_stack[KERNEL_STACK_SIZE]
 
-extern union task_union task[NR_TASKS];
 extern struct list_head readyqueue;
-extern struct list_head freequeue;
 extern struct list_head blocked;
 extern struct task_struct *idle_task;
 extern struct task_struct *init_task;
+
+struct task_struct *alloc_task_struct(void);
+void free_task_struct(struct task_struct *t);
+void defer_free_current_task(struct task_struct *t);
+void reap_terminated_tasks(void);
 
 /* Inicialitza les dades del proces inicial */
 void allocate_DIR(struct task_struct *t);
