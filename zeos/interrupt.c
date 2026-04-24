@@ -7,6 +7,7 @@
 #include <hardware.h>
 #include <io.h>
 #include <sched.h>
+#include <devices.h>
 
 #include <zeos_interrupt.h>
 
@@ -95,6 +96,8 @@ void setIdt()
   setInterruptHandler(33, keyboard_handler, 0);
   setInterruptHandler(14, custom_page_fault_handler, 0);
   set_idt_reg(&idtR);
+
+  keyboard_buffer_init();
 }
 
 
@@ -107,24 +110,27 @@ void clock_routine()
 }
 
 
-void keyboard_routine() {
-    unsigned char code;
-    char char_to_print;
+void keyboard_routine()
+{
+  unsigned char code = inb(0x60);
 
-    code = inb(0x60);
+  /* Ignore break codes (key release). */
+  if (code & 0x80) return;
 
-    if ((code & 0x80) == 0) { 
-        
-        code = code & 0x7F;
-        
-        char_to_print = char_map[code];
-        
-        if (char_to_print == '\0') {
-            printc_xy(0, 0, 'C'); 
-        } else {
-            printc_xy(0, 0, char_to_print);
-        }
-    }
+  /* Debug helper: press F1 to print current circular buffer content. */
+  if (code == 0x3B) {
+    keyboard_buffer_debug_dump();
+    return;
+  }
+
+  code &= 0x7F;
+  if (code >= sizeof(char_map)) return;
+
+  char c = char_map[code];
+  if (c == '\0') return;
+
+  /* If buffer is full, drop newest key. */
+  keyboard_buffer_push(c);
 }
 
 void custom_page_fault_routine(unsigned int error, unsigned int eip) {
