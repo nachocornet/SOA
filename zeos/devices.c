@@ -29,14 +29,11 @@ void keyboard_buffer_init(void)
 
 int keyboard_buffer_push(char c)
 {
-  if (keyboard_items >= KEYBOARD_BUFFER_SIZE) {
-    keyboard_tail = (keyboard_tail + 1) % KEYBOARD_BUFFER_SIZE;
-  } else {
-    keyboard_items++;
-  }
+  if (keyboard_items >= KEYBOARD_BUFFER_SIZE) return -1;
 
   keyboard_buffer[keyboard_head] = c;
   keyboard_head = (keyboard_head + 1) % KEYBOARD_BUFFER_SIZE;
+  keyboard_items++;
   return 0;
 }
 

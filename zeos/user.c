@@ -191,6 +191,7 @@ main(void)
     }
 
     print("[INFO] You can keep typing, and press F1 anytime to dump the keyboard buffer.\n");
+    print("[INFO] If the buffer is full, new keys are discarded.\n");
 
     while (1) ;
 }
