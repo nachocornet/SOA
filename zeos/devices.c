@@ -1,8 +1,9 @@
 #include <io.h>
+#include <libc.h>
 #include <utils.h>
 #include <list.h>
 
-#define KEYBOARD_BUFFER_SIZE 128
+#define KEYBOARD_BUFFER_SIZE 16
 
 static char keyboard_buffer[KEYBOARD_BUFFER_SIZE];
 static int keyboard_head = 0;
@@ -28,11 +29,14 @@ void keyboard_buffer_init(void)
 
 int keyboard_buffer_push(char c)
 {
-  if (keyboard_items >= KEYBOARD_BUFFER_SIZE) return -1;
+  if (keyboard_items >= KEYBOARD_BUFFER_SIZE) {
+    keyboard_tail = (keyboard_tail + 1) % KEYBOARD_BUFFER_SIZE;
+  } else {
+    keyboard_items++;
+  }
 
   keyboard_buffer[keyboard_head] = c;
   keyboard_head = (keyboard_head + 1) % KEYBOARD_BUFFER_SIZE;
-  keyboard_items++;
   return 0;
 }
 
@@ -55,8 +59,18 @@ void keyboard_buffer_debug_dump(void)
 {
   int i;
   int pos = keyboard_tail;
+  char num[8];
 
-  printk("\n[KBD BUFFER] ");
+  printk("\n[KBD BUFFER] count=");
+  itoa(keyboard_items, num);
+  printk(num);
+  printk(" head=");
+  itoa(keyboard_head, num);
+  printk(num);
+  printk(" tail=");
+  itoa(keyboard_tail, num);
+  printk(num);
+  printk(" | ");
   if (keyboard_items == 0) {
     printk("<empty>\n");
     return;

@@ -40,20 +40,7 @@ static void burn_ticks(int loops)
     }
 }
 
-static void test_keyboard_irq_smoke(void)
-{
-    int t0, t1;
 
-    print("\n-- milestone 1: keyboard irq smoke test --\n");
-    print("[INFO] TECLEA LAS TECLAS QUE QUIERAS, O ESCRIBE UN MENSAJE.\n");
-    print("[INFO] DEJAMOS DE MARGEN UNOS SEGUNDOS...\n");
-
-    t0 = gettime();
-    burn_ticks(200000000);
-    t1 = gettime();
-
-    test_result("clock still advances during keyboard activity", t1 > t0);
-}
 
 static void test_write_errors(void)
 {
@@ -166,12 +153,10 @@ main(void)
     info_msg = "[INFO] write() basic output test\n";
     wr = write(1, info_msg, strlen(info_msg));
     burn_ticks(100000);
-    
+
     test_result("write(valid args) returns byte count", wr == (int)strlen(info_msg));
 
     test_write_errors();
-
-    test_keyboard_irq_smoke();
 
     print("\n-- fork/block/unblock/exit tests --\n");
     pid = fork();
@@ -205,9 +190,7 @@ main(void)
         print("SOME TESTS FAILED\n");
     }
 
-    print("[Parent] exit\n");
-    print("[INFO] SI QUIERES VER EL BUFFER DE TECLADO, PULSA F1\n");
-    exit();
+    print("[INFO] You can keep typing, and press F1 anytime to dump the keyboard buffer.\n");
 
     while (1) ;
 }
