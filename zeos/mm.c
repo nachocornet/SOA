@@ -17,7 +17,7 @@ int first_kernel;
 int last_kernel;
 
 /* Bytemap to mark the free physical pages */
-Byte phys_mem[TOTAL_PAGES];
+Byte phys_mem[TOTAL_FRAMES];
 #define FREE_FRAME 0
 #define USED_FRAME 1
 
@@ -41,7 +41,7 @@ extern char* itoa(int, char*);
 void clear_page_table(page_table_entry* process_PT)
 {
   int i;
-  for (i=0; i<TOTAL_PAGES; i++) {
+  for (i=0; i<PAGE_TABLE_ENTRIES; i++) {
     process_PT[i].entry = 0;
   }
 }
@@ -167,7 +167,7 @@ int init_frames( void )
 {
     int i;
     /* Mark pages as Free */
-    for (i=0; i<TOTAL_PAGES; i++) {
+  for (i=0; i<TOTAL_FRAMES; i++) {
         phys_mem[i] = FREE_FRAME;
     }
     // Manually reserve kernel frames...
@@ -186,7 +186,7 @@ int init_frames( void )
 int alloc_frame( void )
 {
     int i;
-    for (i=last_kernel; i<TOTAL_PAGES; i++) {
+  for (i=last_kernel; i<TOTAL_FRAMES; i++) {
         if (phys_mem[i] == FREE_FRAME) {
             phys_mem[i] = USED_FRAME;
             return i;
@@ -210,7 +210,7 @@ void free_user_pages( page_table_entry* process_PT )
 /* free_frame - Mark as FREE_FRAME the frame  'frame'.*/
 void free_frame( unsigned int frame )
 {
-    if (frame<TOTAL_PAGES)
+  if (frame<TOTAL_FRAMES)
       phys_mem[frame]=FREE_FRAME;
 }
 

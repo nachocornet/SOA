@@ -1,15 +1,22 @@
-#include <asm.h>
+# 0 "wrappers.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "/usr/include/stdc-predef.h" 1 3 4
+# 0 "<command-line>" 2
+# 1 "wrappers.S"
+# 1 "include/asm.h" 1
+# 2 "wrappers.S" 2
 .extern int errno
 
-ENTRY(read)
+.globl read; .type read, @function; .align 0; read:
     pushl %ebp
     movl %esp, %ebp
 
     pushl %ebx
-    movl 8(%ebp), %edx   // buffer -> EDX
-    movl 12(%ebp), %ecx  // maxchars -> ECX
+    movl 8(%ebp), %edx
+    movl 12(%ebp), %ecx
 
-    movl $3, %eax        // 3 = syscall read
+    movl $3, %eax
 
     pushl %ecx
     pushl %edx
@@ -39,84 +46,84 @@ fin_read:
     popl %ebp
     ret
 
-ENTRY(write)
+.globl write; .type write, @function; .align 0; write:
     pushl %ebp
     movl %esp, %ebp
-    
-    // Pasamos parámetros de la pila a los registros como pide el profesor (y SAVE_ALL)
-    pushl %ebx          // Salvar EBX según convención de C
-    movl 8(%ebp), %edx  // fd   -> EDX
-    movl 12(%ebp), %ecx // buff -> ECX
-    movl 16(%ebp), %ebx // size -> EBX
-    
-    movl $4, %eax       // 4 = syscall de write
-    
-    // Truco del sysenter: fingir una llamada para guardar el retorno
-    pushl %ecx          // Salvamos el registro
+
+
+    pushl %ebx
+    movl 8(%ebp), %edx
+    movl 12(%ebp), %ecx
+    movl 16(%ebp), %ebx
+
+    movl $4, %eax
+
+
+    pushl %ecx
     pushl %edx
-    
-    // Fingimos el EBP para el retorno de sysenter
-    pushl $return_from_sysenter 
-    pushl %ebp          // Fake dynamic link
-    movl %esp, %ebp     
-    
-    sysenter            // ¡Saltamos al sistema!
+
+
+    pushl $return_from_sysenter
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
 
 return_from_sysenter:
-    popl %ebp           // Deshacemos el fake link
-    addl $4, %esp       // Limpiamos la dirección de retorno
-    
+    popl %ebp
+    addl $4, %esp
+
     popl %edx
     popl %ecx
-    popl %ebx           // Restaurar EBX original
-    
-    cmpl $0, %eax       // Comparamos lo que devolvió sys_write con 0
-    jge fin_write       // Si es Mayor o Igual (Jump if Greater or Equal), todo fue bien, saltamos al final
+    popl %ebx
 
-    // Si llegamos aquí, EAX es negativo (hubo error)
-    negl %eax           // Le cambiamos el signo (ej: de -14 pasa a 14)
-    movl %eax, errno    // Guardamos el 14 en la variable global errno
-    movl $-1, %eax      // Sobreescribimos EAX con -1 (lo que devolverá la función write)
-    
+    cmpl $0, %eax
+    jge fin_write
+
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
 fin_write:
     popl %ebp
     ret
 
-ENTRY(gettime)
+.globl gettime; .type gettime, @function; .align 0; gettime:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
-    
-    movl $10, %eax      // 10 = syscall de gettime
-    
-    // Salvamos los registros que sysenter y sysexit machacan
+
+    movl $10, %eax
+
+
     pushl %ecx
     pushl %edx
-    
-    // Fingimos el entorno para el retorno
+
+
     pushl $return_from_gettime
     pushl %ebp
     movl %esp, %ebp
-    
-    sysenter            // ¡Al kernel!
+
+    sysenter
 
 return_from_gettime:
     popl %ebp
-    addl $4, %esp       // Limpiamos la dir de retorno
-    
+    addl $4, %esp
+
     popl %edx
     popl %ecx
-    
-    // gettime() nunca da error (nunca devuelve negativo), 
-    // así que no hace falta gestionar el 'errno' aquí.
-    // Devolvemos lo que haya en EAX directamente.
-    
+
+
+
+
+
     popl %ebx
     popl %ebp
     ret
 
 
-ENTRY(getpid)
+.globl getpid; .type getpid, @function; .align 0; getpid:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
@@ -128,7 +135,7 @@ ENTRY(getpid)
 
     pushl $return_getpid
     pushl %ebp
-    
+
     movl %esp, %ebp
     sysenter
 
@@ -151,7 +158,7 @@ fi_getpid:
     popl %ebp
     ret
 
-ENTRY(fork)
+.globl fork; .type fork, @function; .align 0; fork:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
@@ -185,14 +192,14 @@ fi_fork:
     popl %ebp
     ret
 
-ENTRY(exit)
+.globl exit; .type exit, @function; .align 0; exit:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
 
     pushl %ecx
     pushl %edx
-    
+
     movl $1, %eax
 
     pushl $return_exit
@@ -220,7 +227,7 @@ fi_exit:
     popl %ebp
     ret
 
-ENTRY(block)
+.globl block; .type block, @function; .align 0; block:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
@@ -246,7 +253,7 @@ return_block:
     popl %ebp
     ret
 
-ENTRY(unblock)
+.globl unblock; .type unblock, @function; .align 0; unblock:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
@@ -281,7 +288,7 @@ fi_unblock:
     popl %ebp
     ret
 
-ENTRY(gotoxy)
+.globl gotoxy; .type gotoxy, @function; .align 0; gotoxy:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
@@ -317,7 +324,7 @@ fi_gotoxy:
     popl %ebp
     ret
 
-ENTRY(set_color)
+.globl set_color; .type set_color, @function; .align 0; set_color:
     pushl %ebp
     movl %esp, %ebp
     pushl %ebx
@@ -352,5 +359,3 @@ fi_set_color:
     popl %ebx
     popl %ebp
     ret
-
-

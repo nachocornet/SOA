@@ -98,6 +98,7 @@ void setIdt()
   set_idt_reg(&idtR);
 
   keyboard_buffer_init();
+  keyboard_waitqueue_init();
 }
 
 
@@ -124,13 +125,21 @@ void keyboard_routine()
   }
 
   code &= 0x7F;
-  if (code >= sizeof(char_map)) return;
+  char c;
 
-  char c = char_map[code];
+  if (code == 0x1C) c = '\n';        /* Enter */
+  else if (code == 0x39) c = ' ';     /* Space */
+  else {
+    if (code >= sizeof(char_map)) return;
+    c = char_map[code];
+  }
+
   if (c == '\0') return;
 
   /* If buffer is full, drop newest key. */
-  keyboard_buffer_push(c);
+  if (keyboard_buffer_push(c) == 0) {
+    keyboard_wake_one_reader();
+  }
 }
 
 void custom_page_fault_routine(unsigned int error, unsigned int eip) {

@@ -16,6 +16,26 @@
 #define NUM_ROWS    25
 
 Byte x, y=19;
+Byte current_color = 0x02;
+
+int screen_gotoxy(int mx, int my)
+{
+  if (mx < 0 || mx >= NUM_COLUMNS) return -22;
+  if (my < 0 || my >= NUM_ROWS) return -22;
+
+  x = (Byte)mx;
+  y = (Byte)my;
+  return 0;
+}
+
+int screen_set_color(int fg, int bg)
+{
+  if (fg < 0 || fg > 15) return -22;
+  if (bg < 0 || bg > 15) return -22;
+
+  current_color = (Byte)((bg << 4) | (fg & 0x0F));
+  return 0;
+}
 
 void printc(char c)
 {
@@ -27,7 +47,7 @@ void printc(char c)
   }
   else
   {
-    Word ch = (Word) (c & 0x00FF) | 0x0200;
+    Word ch = (Word) (c & 0x00FF) | ((Word)current_color << 8);
 	Word *screen = (Word *)0xb8000;
 	screen[(y * NUM_COLUMNS + x)] = ch;
     if (++x >= NUM_COLUMNS)

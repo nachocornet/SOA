@@ -40,6 +40,36 @@ static void burn_ticks(int loops)
     }
 }
 
+static int read_word(char *buffer, int maxchars)
+{
+    int n = 0;
+    char c;
+
+    if (buffer == (char *)0) return -1;
+    if (maxchars <= 1) return -1;
+
+    while (1) {
+        int r = read(&c, 1);
+
+        if (r <= 0) {
+            if (n > 0) break;
+            return r;
+        }
+
+        if (c == ' ' || c == '\n' || c == '\r') {
+            if (n == 0) continue;
+            break;
+        }
+
+        if (n < (maxchars - 1)) {
+            buffer[n++] = c;
+        }
+    }
+
+    buffer[n] = '\0';
+    return n;
+}
+
 
 
 static void test_write_errors(void)
@@ -62,6 +92,52 @@ static void test_write_errors(void)
     test_result("write(NULL) returns -1", r == -1);
     test_result("errno=EFAULT (14)", errno == 14);
     if (r == -1) perror();
+}
+
+static void test_read_errors(void)
+{
+    int r;
+    char tmp[8];
+
+    print("\n-- read() validation tests --\n");
+
+    r = read((char *)0, 1);
+    test_result("read(NULL) returns -1", r == -1);
+    test_result("errno=EFAULT (14)", errno == 14);
+    if (r == -1) perror();
+
+    r = read(tmp, -1);
+    test_result("read(size<0) returns -1", r == -1);
+    test_result("errno=EINVAL (22)", errno == 22);
+    if (r == -1) perror();
+
+    r = read(tmp, 0);
+    test_result("read(size=0) returns 0", r == 0);
+}
+
+static void test_screen_syscalls(void)
+{
+    int r;
+
+    print("\n-- gotoxy()/set_color() tests --\n");
+
+    r = gotoxy(80, 0);
+    test_result("gotoxy(x out of range) returns -1", r == -1);
+    test_result("errno=EINVAL (22)", errno == 22);
+
+    r = gotoxy(0, 25);
+    test_result("gotoxy(y out of range) returns -1", r == -1);
+    test_result("errno=EINVAL (22)", errno == 22);
+
+    r = set_color(16, 0);
+    test_result("set_color(fg out of range) returns -1", r == -1);
+    test_result("errno=EINVAL (22)", errno == 22);
+
+    r = set_color(2, 1);
+    test_result("set_color(valid args) returns 0", r == 0);
+
+    /* Restore default-like color for next output lines. */
+    set_color(2, 0);
 }
 
 static void child_flow(void)
@@ -139,7 +215,9 @@ main(void)
     int end_t;
     int pid;
     int wr;
+    int nread;
     char *info_msg;
+    char rbuf[16];
 
     print("\n======= ZEOS USER FULL TEST =======\n");
 
@@ -157,6 +235,8 @@ main(void)
     test_result("write(valid args) returns byte count", wr == (int)strlen(info_msg));
 
     test_write_errors();
+    test_read_errors();
+    test_screen_syscalls();
 
     print("\n-- fork/block/unblock/exit tests --\n");
     pid = fork();
@@ -190,8 +270,40 @@ main(void)
         print("SOME TESTS FAILED\n");
     }
 
-    print("[INFO] You can keep typing, and press F1 anytime to dump the keyboard buffer.\n");
-    print("[INFO] If the buffer is full, new keys are discarded.\n");
+    print("\n-- professor manual checklist --\n");
+    print("[STEP 1] Type a short word, then press F1.\n");
+    print("[EXPECT] Dump shows the same word in FIFO order.\n");
+    print("[STEP 2] Type more than 16 chars, then press F1.\n");
+    print("[EXPECT] count stays at 16, new keys are discarded.\n");
+    print("[STEP 3] Keep typing and press F1 multiple times.\n");
+    print("[EXPECT] System stays stable and responsive.\n");
+
+    print("\n[STEP 4] read_word() demo: type a word and finish with SPACE or ENTER.\n");
+    print("[EXPECT] It waits until delimiter and prints only the word.\n");
+    nread = read_word(rbuf, sizeof(rbuf));
+    if (nread > 0) {
+        write(1, "[READ WORD] ", 12);
+        write(1, rbuf, strlen(rbuf));
+        write(1, "\n", 1);
+    }
+
+    print("\n[STEP 5] Press one button to see read(), it has to block\n");
+    nread = read(rbuf, sizeof(rbuf));
+    if (nread > 0) {
+        write(1, "[READ] ", 7);
+        write(1, rbuf, strlen(rbuf));
+        write(1, "\n", 1);
+    }
+
+    print("\n[STEP 6] gotoxy/set_color final demo.\n");
+    print("[EXPECT] You should see the label at bottom-left.\n");
+    if (set_color(2, 0) == 0 && gotoxy(0, 24) == 0) {
+        print("[GOTOXY END DEMO]");
+    }
+    set_color(2, 0);
+    gotoxy(0, 19);
+
+    print("\n[INFO] End of automatic demos. You can keep typing and press F1 anytime.\n");
 
     while (1) ;
 }

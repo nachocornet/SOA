@@ -333,8 +333,7 @@ void update_process_state_rr(struct task_struct *t, struct list_head *dst_queue)
     if (dst_queue != NULL) {
         list_add_tail(&t->list, dst_queue);
         if (dst_queue == &readyqueue) t->state = ST_READY;
-        else if (dst_queue == &blocked) t->state = ST_BLOCKED;
-        else t->state = ST_FREE;
+		else t->state = ST_BLOCKED;
     } else {
         t->state = ST_RUN;
     }
