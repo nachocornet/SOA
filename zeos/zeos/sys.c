@@ -69,6 +69,31 @@ int sys_write(int fd, char *buffer, int size) {
     return bytes_written; 
 }
 
+int sys_read(char *buffer, int maxchars)
+{
+    int bytes_read = 0;
+    char c;
+
+    if (maxchars < 0) return -22; /* EINVAL */
+    if (maxchars == 0) return 0;
+
+    if (buffer == NULL) return -14; /* EFAULT */
+    if (!access_ok(ESCRIPTURA, buffer, maxchars)) return -14;
+
+    while (bytes_read < maxchars) {
+        if (keyboard_buffer_pop(&c) == 0) {
+            copy_to_user(&c, buffer + bytes_read, 1);
+            bytes_read++;
+            continue;
+        }
+
+        /* Blocking behavior: sleep until a new key arrives. */
+        keyboard_block_current_reader();
+    }
+
+    return bytes_read;
+}
+
 extern int zeos_ticks;
 extern unsigned long get_ebp(void);
 
