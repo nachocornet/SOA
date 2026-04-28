@@ -13,13 +13,7 @@ void itoa(int a, char *b);
 
 int strlen(char *a);
 
-int read(char *buffer, int maxchars);
-
 int write(int fd, char *buffer, int size);
-
-int gotoxy(int x, int y);
-
-int set_color(int fg, int bg);
 
 int gettime(void);
 

@@ -2,7 +2,6 @@
 #include <libc.h>
 #include <utils.h>
 #include <list.h>
-#include <sched.h>
 
 #define KEYBOARD_BUFFER_SIZE 16
 
@@ -10,9 +9,6 @@ static char keyboard_buffer[KEYBOARD_BUFFER_SIZE];
 static int keyboard_head = 0;
 static int keyboard_tail = 0;
 static int keyboard_items = 0;
-static struct list_head keyboard_waitqueue;
-
-extern void task_switch(union task_union *new);
 
 int sys_write_console(char *buffer,int size)
 {
@@ -29,11 +25,6 @@ void keyboard_buffer_init(void)
   keyboard_head = 0;
   keyboard_tail = 0;
   keyboard_items = 0;
-}
-
-void keyboard_waitqueue_init(void)
-{
-  INIT_LIST_HEAD(&keyboard_waitqueue);
 }
 
 int keyboard_buffer_push(char c)
@@ -59,29 +50,6 @@ int keyboard_buffer_pop(char *c)
 int keyboard_buffer_count(void)
 {
   return keyboard_items;
-}
-
-void keyboard_block_current_reader(void)
-{
-  struct task_struct *p = current();
-
-  if (p == idle_task) return;
-
-  update_process_state_rr(p, &keyboard_waitqueue);
-
-  if (!list_empty(&readyqueue)) {
-    sched_next_rr();
-  } else {
-    task_switch((union task_union *)idle_task);
-  }
-}
-
-void keyboard_wake_one_reader(void)
-{
-  if (list_empty(&keyboard_waitqueue)) return;
-
-  struct task_struct *p = list_head_to_task_struct(list_first(&keyboard_waitqueue));
-  update_process_state_rr(p, &readyqueue);
 }
 
 void keyboard_buffer_debug_dump(void)

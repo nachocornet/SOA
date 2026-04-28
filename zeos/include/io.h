@@ -11,8 +11,6 @@
 /**********************/
 
 void printc(char c);
-int screen_gotoxy(int x, int y);
-int screen_set_color(int fg, int bg);
 void printc_xy(Byte x, Byte y, char c);
 void printk(char *string);
 

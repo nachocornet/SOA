@@ -1,44 +1,5 @@
 #include <asm.h>
 .extern int errno
-
-ENTRY(read)
-    pushl %ebp
-    movl %esp, %ebp
-
-    pushl %ebx
-    movl 8(%ebp), %edx   // buffer -> EDX
-    movl 12(%ebp), %ecx  // maxchars -> ECX
-
-    movl $3, %eax        // 3 = syscall read
-
-    pushl %ecx
-    pushl %edx
-
-    pushl $return_from_read
-    pushl %ebp
-    movl %esp, %ebp
-
-    sysenter
-
-return_from_read:
-    popl %ebp
-    addl $4, %esp
-
-    popl %edx
-    popl %ecx
-    popl %ebx
-
-    cmpl $0, %eax
-    jge fin_read
-
-    negl %eax
-    movl %eax, errno
-    movl $-1, %eax
-
-fin_read:
-    popl %ebp
-    ret
-
 ENTRY(write)
     pushl %ebp
     movl %esp, %ebp
@@ -277,78 +238,6 @@ return_unblock:
     movl $-1, %eax
 
 fi_unblock:
-    popl %ebx
-    popl %ebp
-    ret
-
-ENTRY(gotoxy)
-    pushl %ebp
-    movl %esp, %ebp
-    pushl %ebx
-
-    pushl %ecx
-    pushl %edx
-
-    movl 8(%ebp), %edx
-    movl 12(%ebp), %ecx
-    movl $5, %eax
-
-    pushl $return_gotoxy
-    pushl %ebp
-    movl %esp, %ebp
-    sysenter
-
-return_gotoxy:
-    popl %ebp
-    addl $4, %esp
-
-    popl %edx
-    popl %ecx
-
-    cmpl $0, %eax
-    jge fi_gotoxy
-
-    negl %eax
-    movl %eax, errno
-    movl $-1, %eax
-
-fi_gotoxy:
-    popl %ebx
-    popl %ebp
-    ret
-
-ENTRY(set_color)
-    pushl %ebp
-    movl %esp, %ebp
-    pushl %ebx
-
-    pushl %ecx
-    pushl %edx
-
-    movl 8(%ebp), %edx
-    movl 12(%ebp), %ecx
-    movl $6, %eax
-
-    pushl $return_set_color
-    pushl %ebp
-    movl %esp, %ebp
-    sysenter
-
-return_set_color:
-    popl %ebp
-    addl $4, %esp
-
-    popl %edx
-    popl %ecx
-
-    cmpl $0, %eax
-    jge fi_set_color
-
-    negl %eax
-    movl %eax, errno
-    movl $-1, %eax
-
-fi_set_color:
     popl %ebx
     popl %ebp
     ret
