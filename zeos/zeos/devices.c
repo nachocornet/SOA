@@ -74,6 +74,7 @@ void keyboard_block_current_reader(void)
   } else {
     task_switch((union task_union *)idle_task);
   }
+    
 }
 
 void keyboard_wake_one_reader(void)

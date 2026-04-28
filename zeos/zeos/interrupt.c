@@ -135,6 +135,7 @@ void keyboard_routine()
   /* If buffer is full, drop newest key. */
   if (keyboard_buffer_push(c) == 0) {
     keyboard_wake_one_reader();
+    return;
   }
 }
 

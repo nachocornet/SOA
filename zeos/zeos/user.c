@@ -272,6 +272,37 @@ main(void)
         write(1, "\n", 1);
     }
 
+    int pid1, pid2;
+    char buffer[10];
+
+    write(1, "\n--- LECTURE TEST MULTITASK ---\n", 36);
+
+    pid1 = fork();
+    if (pid1 == 0) {
+        write(1, "[CHILD 1] I want 5 chars\n", 28);
+        read(buffer, 5);
+        write(1, "[CHILD 1] I have: ", 19);
+        write(1, buffer, 5);
+        write(1, "\n", 1);
+        exit();
+    }
+
+    pid2 = fork();
+    if (pid2 == 0) {
+        write(1, "[CHILD 2] I want 5 chars\n", 28);
+        read(buffer, 5);
+        write(1, "[CHILD 2] I have: ", 19);
+        write(1, buffer, 5);
+        write(1, "\n", 1);
+        exit();
+    }
+
+    write(1, "[PARENT] I want 5 chars\n", 27);
+    read(buffer, 5);
+    write(1, "[PARENT]   I have: ", 19);
+    write(1, buffer, 5);
+    write(1, "\n", 1);
+
     print("\n[INFO] End of automatic demos. You can keep typing and press F1 anytime.\n");
 
     while (1) ;

@@ -13,6 +13,7 @@
 
 #include <sched.h>
 
+
 extern page_table_entry *PT_systemAddress;
 extern void ret_from_fork(void);
 
@@ -68,11 +69,19 @@ int sys_write(int fd, char *buffer, int size) {
     
     return bytes_written; 
 }
+int read_queue_init = 0;
+int reading_pid = -1;
+struct list_head read_waitqueue;
 
 int sys_read(char *buffer, int maxchars)
 {
     int bytes_read = 0;
     char c;
+
+    if(read_queue_init == 0) {
+        INIT_LIST_HEAD(&read_waitqueue);
+        read_queue_init = 1;
+    }
 
     if (maxchars < 0) return -22; /* EINVAL */
     if (maxchars == 0) return 0;
@@ -80,15 +89,35 @@ int sys_read(char *buffer, int maxchars)
     if (buffer == NULL) return -14; /* EFAULT */
     if (!access_ok(ESCRIPTURA, buffer, maxchars)) return -14;
 
+
+    while(reading_pid != -1 && reading_pid != current()->PID) {
+        /* Another process is currently reading, block until it's done. */
+        struct task_struct *p = current();
+        update_process_state_rr(p, &read_waitqueue);
+        
+        if (!list_empty(&readyqueue)) {
+            sched_next_rr();
+        } else {
+            task_switch((union task_union *)idle_task);
+        }
+    }
+
+    reading_pid = current()->PID;
+
     while (bytes_read < maxchars) {
         if (keyboard_buffer_pop(&c) == 0) {
             copy_to_user(&c, buffer + bytes_read, 1);
             bytes_read++;
-            continue;
+        } else {
+            keyboard_block_current_reader();
         }
+    }
 
-        /* Blocking behavior: sleep until a new key arrives. */
-        keyboard_block_current_reader();
+    reading_pid = -1;
+
+    if(!list_empty(&read_waitqueue)) {
+        struct task_struct *p = list_head_to_task_struct(list_first(&read_waitqueue));
+        update_process_state_rr(p, &readyqueue);
     }
 
     return bytes_read;
