@@ -72,6 +72,9 @@ int __attribute__((__section__(".text.main")))
   /* Activate paging using the page directory loaded by init_task1(). */
   set_pe_flag();
 
+  /* Quick mapping self-test for a high frame number. */
+  test_system_frame_mapping(2000);
+
   /* Move user code/data now (after the page table initialization) */
   copy_data((void *) KERNEL_START + *p_sys_size, (void*)L_USER_START, *p_usr_size);
 

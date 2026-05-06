@@ -141,8 +141,10 @@ int fork_nomem(int *frames, struct task_struct *child) {
         if (frames[i] != -1) free_frame(frames[i]);
 
     if (child->dir_pages_baseAddr != NULL) {
-        unsigned int dir_frame = ((unsigned int)child->dir_pages_baseAddr) >> 12;
+        unsigned int dir_frame = system_address_to_frame(child->dir_pages_baseAddr);
         unsigned int pt_user_frame = child->dir_pages_baseAddr[1].bits.pbase_addr;
+        unmap_system_frame(pt_user_frame);
+        unmap_system_frame(dir_frame);
         free_frame(pt_user_frame);
         free_frame(dir_frame);
         child->dir_pages_baseAddr = NULL;
@@ -265,8 +267,10 @@ void sys_exit(void) {
 
     // Free page table and directory
     if (p->dir_pages_baseAddr != NULL) {
-        unsigned int dir_frame = ((unsigned int)p->dir_pages_baseAddr) >> 12;
+        unsigned int dir_frame = system_address_to_frame(p->dir_pages_baseAddr);
         unsigned int pt_user_frame = p->dir_pages_baseAddr[1].bits.pbase_addr;
+        unmap_system_frame(pt_user_frame);
+        unmap_system_frame(dir_frame);
         free_frame(pt_user_frame);
         free_frame(dir_frame);
         p->dir_pages_baseAddr = NULL;

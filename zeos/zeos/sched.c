@@ -15,7 +15,9 @@ struct task_struct *init_task;
 struct task_struct *idle_task;
 
 int PT_system;
+int PT_systemHigh;
 page_table_entry *PT_systemAddress;
+page_table_entry *PT_systemHighAddress;
 
 static int remaining_ticks;
 static int active_tasks;
@@ -28,17 +30,16 @@ extern void switch_stack(int *save_ebp, int *new_esp);
 struct task_struct *alloc_task_struct(void)
 {
 	if (PT_systemAddress == NULL) return NULL;
-	if (active_tasks >= NR_TASKS) return NULL;
 
 	int pcb_frame = alloc_frame();
 	if (pcb_frame == -1) return NULL;
 
-	set_ss_pag(PT_systemAddress, pcb_frame, pcb_frame, 0);
+	map_system_frame(pcb_frame);
 	
 	// Hacer flush TLB solo si ya está la paginación activada
 	if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
 
-	union task_union *tu = (union task_union *)(pcb_frame << 12);
+	union task_union *tu = (union task_union *)system_frame_to_address(pcb_frame);
 	for (int i = 0; i < KERNEL_STACK_SIZE; ++i) tu->stack[i] = 0;
 
 	tu->task.PID = -1;
@@ -60,9 +61,9 @@ void free_task_struct(struct task_struct *t)
 {
 	if (t == NULL) return;
 
-	unsigned int pcb_frame = ((unsigned int)t) >> 12;
+	unsigned int pcb_frame = system_address_to_frame(t);
 	if (PT_systemAddress != NULL) {
-		del_ss_pag(PT_systemAddress, pcb_frame);
+		unmap_system_frame(pcb_frame);
 		if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
 	}
 	free_frame(pcb_frame);
@@ -97,19 +98,19 @@ void allocate_DIR(struct task_struct *t) {
 	}
 
 	/* PRIMERO: Mapear los frames en PT_systemAddress ANTES de acceder a ellos */
-	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
-	set_ss_pag(PT_systemAddress, PT_user, PT_user, 0);
+	map_system_frame(Dir);
+	map_system_frame(PT_user);
 
 	/* Mapear el PCB en PT_systemAddress para que sea accesible con cualquier CR3 */
-	unsigned int PCB_frame = ((unsigned int)t) >> 12;
-	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
+	unsigned int PCB_frame = system_address_to_frame(t);
+	map_system_frame(PCB_frame);
 
 	/* FLUSH TLB para asegurar que los nuevos mapeos sean visibles */
 	set_cr3(current()->dir_pages_baseAddr);
 
 	/* AHORA podemos acceder a las direcciones virtuales mapeadas */
-	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
-	page_table_entry *PT_userAddress = (page_table_entry *) (PT_user << 12);
+	page_table_entry *DirAddress = (page_table_entry *) system_frame_to_address(Dir);
+	page_table_entry *PT_userAddress = (page_table_entry *) system_frame_to_address(PT_user);
 
 	clear_page_table(DirAddress);
 	clear_page_table(PT_userAddress);
@@ -119,6 +120,10 @@ void allocate_DIR(struct task_struct *t) {
 	DirAddress[0].bits.pbase_addr = PT_system;
 	DirAddress[0].bits.rw = 1;
 	DirAddress[0].bits.present = 1;
+	DirAddress[2].entry = 0;
+	DirAddress[2].bits.pbase_addr = PT_systemHigh;
+	DirAddress[2].bits.rw = 1;
+	DirAddress[2].bits.present = 1;
 
 	/* Entrada 1: espacio de usuario del proceso */
 	DirAddress[1].entry = 0;
@@ -153,15 +158,19 @@ void init_idle (void)
 		return;
 	}
 
-	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
+	map_system_frame(Dir);
 
-	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
+	page_table_entry *DirAddress = (page_table_entry *) system_frame_to_address(Dir);
 	clear_page_table(DirAddress);
 
 	DirAddress[0].entry = 0;
 	DirAddress[0].bits.pbase_addr = PT_system;
 	DirAddress[0].bits.rw = 1;
 	DirAddress[0].bits.present = 1;
+	DirAddress[2].entry = 0;
+	DirAddress[2].bits.pbase_addr = PT_systemHigh;
+	DirAddress[2].bits.rw = 1;
+	DirAddress[2].bits.present = 1;
 
 	// 4)
 	
@@ -177,7 +186,7 @@ void init_idle (void)
 
 	// 5)
 	int PCB_frame = ((unsigned int)t) >> 12;
-	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
+	map_system_frame(PCB_frame);
 	
 	// 6)
 	t->PID = 0;
@@ -197,7 +206,7 @@ void init_task1(void)
 {
 	// 1a) Allocate a new directory
 	int Dir = alloc_frame();
-	page_table_entry *DirAddress = (page_table_entry *) (Dir << 12);
+	page_table_entry *DirAddress = (page_table_entry *) system_frame_to_address(Dir);
 
 	// 1b) Initialize all directory entries
 	clear_page_table(DirAddress);
@@ -206,29 +215,47 @@ void init_task1(void)
 	// 1d) Initialize used system pages on this system page table
 	if (PT_system == 0) {
 		PT_system = alloc_frame();
-		PT_systemAddress = (page_table_entry *) (PT_system << 12);
+		PT_systemHigh = alloc_frame();
+		if (PT_system == -1 || PT_systemHigh == -1) {
+			if (PT_system != -1) free_frame(PT_system);
+			if (PT_systemHigh != -1) free_frame(PT_systemHigh);
+			free_frame(Dir);
+			return;
+		}
+
+		PT_systemAddress = (page_table_entry *)system_frame_to_address(PT_system);
+		PT_systemHighAddress = (page_table_entry *)system_frame_to_address(PT_systemHigh);
 		clear_page_table(PT_systemAddress);
+		clear_page_table(PT_systemHighAddress);
 		set_kernel_pages(PT_systemAddress);
+
+		/* Keep system page table frames accessible after enabling paging. */
+		map_system_frame(PT_system);
+		map_system_frame(PT_systemHigh);
 	}
 
 	// 1e) Allocate a page table to store user mappings
 	int PT_user = alloc_frame();
-	page_table_entry *PT_userAddress = (page_table_entry *) (PT_user << 12);
+	map_system_frame(PT_user);
+	page_table_entry *PT_userAddress = (page_table_entry *) system_frame_to_address(PT_user);
 	clear_page_table(PT_userAddress);
 
 	// 1f) Complete initialization of address space with set_user_pages
 	set_user_pages(PT_userAddress);
 
 	// 1g) Map Directory and both page tables in the system page table
-	set_ss_pag(PT_systemAddress, Dir, Dir, 0);
-	set_ss_pag(PT_systemAddress, PT_system, PT_system, 0);
-	set_ss_pag(PT_systemAddress, PT_user, PT_user, 0);
+	map_system_frame(Dir);
+	map_system_frame(PT_user);
 
 	// 1h) Assign System page table to first directory entry
 	DirAddress[0].entry = 0;
 	DirAddress[0].bits.pbase_addr = PT_system;
 	DirAddress[0].bits.rw = 1;
 	DirAddress[0].bits.present = 1;
+	DirAddress[2].entry = 0;
+	DirAddress[2].bits.pbase_addr = PT_systemHigh;
+	DirAddress[2].bits.rw = 1;
+	DirAddress[2].bits.present = 1;
 
 	// 1i) Assign User page table to second directory entry with user permissions
 	DirAddress[1].entry = 0;
@@ -249,7 +276,7 @@ void init_task1(void)
 
 	// PASO 3: Map PCB in the system page table
 	int PCB_frame = ((unsigned int)t) >> 12;
-	set_ss_pag(PT_systemAddress, PCB_frame, PCB_frame, 0);
+	map_system_frame(PCB_frame);
 
 
 	// PASO 4: Assign PID 1 to the process
@@ -382,7 +409,7 @@ page_table_entry * get_DIR (struct task_struct *t)
 /* get_PT - Returns the Page Table address for task 't' */
 page_table_entry * get_PT (struct task_struct *t)
 {
-       return (page_table_entry *)(((unsigned int)(t->dir_pages_baseAddr[1].bits.pbase_addr))<<12);
+	return (page_table_entry *)system_frame_to_address(t->dir_pages_baseAddr[1].bits.pbase_addr);
 }
 
 struct task_struct * list_head_to_task_struct(struct list_head *l) {

@@ -41,7 +41,7 @@ extern char* itoa(int, char*);
 void clear_page_table(page_table_entry* process_PT)
 {
   int i;
-  for (i=0; i<TOTAL_PAGES; i++) {
+  for (i=0; i<NUM_PT_ENTRIES; i++) {
     process_PT[i].entry = 0;
   }
 }
@@ -79,10 +79,10 @@ void set_kernel_pages (page_table_entry* process_PT)
   int i;
   /* Init kernel pages */
   for (i=first_kernel; i<last_kernel; i++) { // Logical page equal to physical page (frame)
-    set_ss_pag(process_PT, i, i, 0);
+    map_system_frame(i);
   }
-  set_ss_pag(process_PT, 0x90, 0x90, 0); /* 0x90000 Mapped GDT */
-  set_ss_pag(process_PT, 0xb8, 0xb8, 0); /* 0xb8000 Mapped screen */
+  map_system_frame(0x90); /* 0x90000 Mapped GDT */
+  map_system_frame(0xb8); /* 0xb8000 Mapped screen */
 
   printk("\n");
   show_PT_range(process_PT, first_kernel, last_kernel-first_kernel+1, " Reserved for kernel memory\n");
@@ -223,6 +223,95 @@ void set_ss_pag(page_table_entry *PT, unsigned page,unsigned frame, int user)
 	PT[page].bits.rw=1;
 	PT[page].bits.present=1;
 
+}
+
+void *system_frame_to_address(unsigned int frame)
+{
+  unsigned int page = frame;
+
+  if ((read_cr0() & 0x80000000) && frame >= NUM_PT_ENTRIES) {
+    page = frame + NUM_PT_ENTRIES;
+  }
+
+  return (void *)(page << 12);
+}
+
+unsigned int system_address_to_frame(const void *addr)
+{
+  unsigned int page = ((unsigned int)addr) >> 12;
+
+  if ((read_cr0() & 0x80000000) && page >= NUM_PT_ENTRIES) {
+    page -= NUM_PT_ENTRIES;
+  }
+
+  return page;
+}
+
+void map_system_frame(unsigned int frame)
+{
+  if (frame < NUM_PT_ENTRIES) {
+    set_ss_pag(PT_systemAddress, frame, frame, 0);
+  } else {
+    set_ss_pag(PT_systemHighAddress, frame - NUM_PT_ENTRIES, frame, 0);
+  }
+}
+
+void unmap_system_frame(unsigned int frame)
+{
+  if (frame < NUM_PT_ENTRIES) {
+    del_ss_pag(PT_systemAddress, frame);
+  } else {
+    del_ss_pag(PT_systemHighAddress, frame - NUM_PT_ENTRIES);
+  }
+}
+
+void test_system_frame_mapping(unsigned int frame)
+{
+  unsigned int high_page;
+  void *virtual_addr;
+  unsigned int round_trip_frame;
+
+  if (frame < NUM_PT_ENTRIES || PT_systemHighAddress == NULL) {
+    printk("[TEST] frame too low or high system PT not ready\n");
+    return;
+  }
+
+  high_page = frame - NUM_PT_ENTRIES;
+  virtual_addr = system_frame_to_address(frame);
+  round_trip_frame = system_address_to_frame(virtual_addr);
+
+  printk("[TEST] frame 2000 round-trip ");
+  if (round_trip_frame == frame) {
+    printk("OK\n");
+  } else {
+    printk("FAIL\n");
+  }
+
+  map_system_frame(frame);
+  if (PT_systemHighAddress[high_page].bits.present == 1 &&
+      PT_systemHighAddress[high_page].bits.pbase_addr == frame) {
+    printk("[TEST] System PT mapping for frame 2000 OK\n");
+  } else {
+    printk("[TEST] System PT mapping for frame 2000 FAIL\n");
+  }
+
+  unmap_system_frame(frame);
+}
+
+void debug_write_high_frame(unsigned int frame, char value)
+{
+  char *addr;
+
+  if (frame < NUM_PT_ENTRIES || PT_systemHighAddress == NULL) {
+    return;
+  }
+
+  map_system_frame(frame);
+  addr = (char *)system_frame_to_address(frame);
+  *addr = value;
+  printk("\n[TEST] frame 2000 written with key '");
+  printc(value);
+  printk("'\n");
 }
 
 /* del_ss_pag - Removes mapping from logical page 'logical_page' */

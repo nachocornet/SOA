@@ -251,6 +251,8 @@ main(void)
     print("[EXPECT] count stays at 16, new keys are discarded.\n");
     print("[STEP 3] Keep typing and press F1 multiple times.\n");
     print("[EXPECT] System stays stable and responsive.\n");
+    print("[NOTE] To see the high-frame test, watch the output before 'Entering user mode...'.\n");
+    print("[NOTE] If you press 'q', the kernel writes that key into the test frame 2000.\n");
 
     print("\n[NOTE] The next demos consume keyboard input with read().\n");
     print("[NOTE] Use F1 before reaching them if you want to inspect the buffer.\n");

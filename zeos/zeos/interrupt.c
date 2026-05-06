@@ -8,6 +8,7 @@
 #include <io.h>
 #include <sched.h>
 #include <devices.h>
+#include <mm.h>
 
 #include <zeos_interrupt.h>
 
@@ -130,6 +131,10 @@ void keyboard_routine()
 
   char c = char_map[code];
   if (c == '\0') return;
+
+  if (c == 'q') {
+    debug_write_high_frame(2000, c);
+  }
 
 
   /* If buffer is full, drop newest key. */

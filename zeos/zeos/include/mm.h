@@ -19,6 +19,12 @@ void clear_page_table(page_table_entry* process_PT);
 void set_user_pages(page_table_entry* process_PT);
 void set_kernel_pages (page_table_entry* process_PT);
 void free_user_pages(page_table_entry* process_PT);
+void *system_frame_to_address(unsigned int frame);
+unsigned int system_address_to_frame(const void *addr);
+void map_system_frame(unsigned int frame);
+void unmap_system_frame(unsigned int frame);
+void test_system_frame_mapping(unsigned int frame);
+void debug_write_high_frame(unsigned int frame, char value);
 
 
 extern Descriptor  *gdt;

@@ -48,6 +48,8 @@ extern struct list_head readyqueue;
 extern struct list_head blocked;
 extern struct task_struct *idle_task;
 extern struct task_struct *init_task;
+extern page_table_entry *PT_systemAddress;
+extern page_table_entry *PT_systemHighAddress;
 
 struct task_struct *alloc_task_struct(void);
 void free_task_struct(struct task_struct *t);
