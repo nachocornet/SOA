@@ -13,9 +13,9 @@ ENTRY (sys_call_table)
 	.long sys_ni_syscall	//8
 	.long sys_ni_syscall	//9
 	.long sys_gettime 		//10
-	.long sys_ni_syscall	//11
-	.long sys_ni_syscall	//12
-	.long sys_ni_syscall	//13
+	.long sys_gotoxy	//11
+	.long sys_set_color	//12
+	.long sys_get_color	//13
 	.long sys_ni_syscall	//14
 	.long sys_ni_syscall	//15
 	.long sys_ni_syscall	//16

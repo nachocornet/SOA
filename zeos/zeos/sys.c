@@ -136,6 +136,25 @@ int sys_getpid()
     return current()->PID;
 }
 
+int sys_gotoxy(int mx, int my)
+{
+    if (mx < 0 || mx >= 80 || my < 0 || my >= 25) return -22; /* EINVAL */
+    screen_set_pos((Byte)mx, (Byte)my);
+    return 0;
+}
+
+int sys_set_color(int fg, int bg)
+{
+    if (fg < 0 || fg > 15 || bg < 0 || bg > 15) return -22; /* EINVAL */
+    screen_set_color((Byte)fg, (Byte)bg);
+    return 0;
+}
+
+int sys_get_color(void)
+{
+    return (int)screen_get_color();
+}
+
 int fork_nomem(int *frames, struct task_struct *child) {
     for (int i = 0; i < NUM_PAG_DATA; ++i)
         if (frames[i] != -1) free_frame(frames[i]);

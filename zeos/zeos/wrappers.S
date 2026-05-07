@@ -115,6 +115,115 @@ return_from_gettime:
     popl %ebp
     ret
 
+ENTRY(gotoxy)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+    movl 8(%ebp), %edx   // x -> EDX
+    movl 12(%ebp), %ecx  // y -> ECX
+
+    movl $11, %eax       // 11 = syscall gotoxy
+
+    pushl %ecx
+    pushl %edx
+
+    pushl $return_gotoxy
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_gotoxy:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_gotoxy
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_gotoxy:
+    popl %ebp
+    ret
+
+ENTRY(set_color)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+    movl 8(%ebp), %edx   // fg -> EDX
+    movl 12(%ebp), %ecx  // bg -> ECX
+
+    movl $12, %eax       // 12 = syscall set_color
+
+    pushl %ecx
+    pushl %edx
+
+    pushl $return_set_color
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_set_color:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_set_color
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_set_color:
+    popl %ebp
+    ret
+
+ENTRY(get_color)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+
+    movl $13, %eax       // 13 = syscall get_color
+
+    pushl %ecx
+    pushl %edx
+
+    pushl $return_get_color
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_get_color:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_get_color
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_get_color:
+    popl %ebp
+    ret
+
 
 ENTRY(getpid)
     pushl %ebp

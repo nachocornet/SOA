@@ -16,6 +16,7 @@
 #define NUM_ROWS    25
 
 Byte x, y=19;
+Byte current_color = 0x02; /* default: green on black (fg=2,bg=0) */
 
 void printc(char c)
 {
@@ -27,9 +28,9 @@ void printc(char c)
   }
   else
   {
-    Word ch = (Word) (c & 0x00FF) | 0x0200;
-	Word *screen = (Word *)0xb8000;
-	screen[(y * NUM_COLUMNS + x)] = ch;
+    Word ch = (Word) (c & 0x00FF) | ((Word)current_color << 8);
+    Word *screen = (Word *)0xb8000;
+    screen[(y * NUM_COLUMNS + x)] = ch;
     if (++x >= NUM_COLUMNS)
     {
       x = 0;
@@ -48,9 +49,11 @@ void printc_color(char c, Byte color)
   }
   else
   {
-    Word ch = (Word) (c & 0x00FF) | ((color & 0x0F) << 8);
-  Word *screen = (Word *)0xb8000;
-  screen[(y * NUM_COLUMNS + x)] = ch;
+    /* color here is treated as combined attribute: (bg<<4)|fg or just fg in low nibble */
+    Byte attr = ((color & 0xFF) & 0xFF);
+    Word ch = (Word) (c & 0x00FF) | ((Word)attr << 8);
+    Word *screen = (Word *)0xb8000;
+    screen[(y * NUM_COLUMNS + x)] = ch;
     if (++x >= NUM_COLUMNS)
     {
       x = 0;
@@ -69,6 +72,25 @@ void printc_xy(Byte mx, Byte my, char c)
   printc(c);
   x=cx;
   y=cy;
+}
+
+void screen_set_pos(Byte mx, Byte my)
+{
+  if (mx < NUM_COLUMNS && my < NUM_ROWS) {
+    x = mx;
+    y = my;
+  }
+}
+
+void screen_set_color(Byte fg, Byte bg)
+{
+  Byte attr = ((bg & 0x0F) << 4) | (fg & 0x0F);
+  current_color = attr;
+}
+
+Byte screen_get_color(void)
+{
+  return current_color;
 }
 
 void printk(char *string)

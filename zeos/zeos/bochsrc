@@ -1,0 +1,14 @@
+# Bochs configuration for ZEOS - simplified
+
+megs: 32
+romimage: file=/usr/local/share/bochs/BIOS-bochs-latest
+vgaromimage: file=/usr/local/share/bochs/VGABIOS-lgpl-latest
+
+ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+ata0-master: type=disk, path="zeos.bin", mode=flat
+
+boot: disk
+
+display_library: x
+log: -
+keyboard: type=mf

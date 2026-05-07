@@ -115,6 +115,25 @@ static void test_read_errors(void)
     test_result("read(size=0) returns 0", r == 0);
 }
 
+static void test_gotoxy_setcolor(void)
+{
+    int r;
+    int attr;
+    print("\n-- gotoxy/set_color tests --\n");
+    r = set_color(3,1);
+    test_result("set_color(valid) returns 0", r == 0);
+    attr = get_color();
+    test_result("get_color returns set value", ((attr & 0x0F) == 3) && (((attr >> 4) & 0x0F) == 1));
+    r = set_color(-1,0);
+    test_result("set_color(fg<0) returns -22", r == -22);
+    r = set_color(0,16);
+    test_result("set_color(bg>15) returns -22", r == -22);
+    r = gotoxy(79,24);
+    test_result("gotoxy(valid) returns 0", r == 0);
+    r = gotoxy(80,24);
+    test_result("gotoxy(x>=80) returns -22", r == -22);
+}
+
 static void child_flow(void)
 {
     int mypid;
@@ -212,6 +231,8 @@ main(void)
     test_write_errors();
     test_read_errors();
 
+    test_gotoxy_setcolor();
+
     print("\n-- fork/block/unblock/exit tests --\n");
     pid = fork();
 
@@ -265,6 +286,34 @@ main(void)
         write(1, rbuf, strlen(rbuf));
         write(1, "\n", 1);
     }
+
+        /* Simple manual demo for gotoxy and set_color (Milestone 4) */
+        print("\n[DEMO] gotoxy/set_color demo:\n");
+        set_color(4,0); /* red on black */
+        gotoxy(0,22);
+        write(1, "This is RED text at (0,22)\n", 26);
+        set_color(2,0); /* green on black */
+        gotoxy(0,23);
+        write(1, "This is GREEN text at (0,23)\n", 28);
+        set_color(7,0); /* reset to light gray */
+
+        /* Paint right side of screen with yellow on blue */
+        print("\n[DEMO] Painting right side of screen (yellow on blue)...\n");
+        set_color(14, 1);  /* yellow text on blue background */
+        {
+            int row, col;
+            char msg[] = "MILESTONE 4 OK";
+            for (row = 5; row < 20; row++) {
+                gotoxy(45, row);
+                for (col = 0; col < 15; col++) {
+                    write(1, "*", 1);
+                }
+            }
+            /* Write centered message in colored region */
+            gotoxy(50, 12);
+            write(1, msg, strlen(msg));
+        }
+        set_color(7, 0);  /* reset to light gray on black */
 
     print("\n[STEP 5] Press one button to see read(), it has to block\n");
     nread = read(rbuf, sizeof(rbuf));

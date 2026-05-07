@@ -29,4 +29,9 @@ void block(void);
 
 int unblock(int pid);
 
+/* Screen helpers (syscall wrappers provided in wrappers.S) */
+int gotoxy(int x, int y);
+int set_color(int fg, int bg);
+int get_color(void);
+
 #endif  /* __LIBC_H__ */
