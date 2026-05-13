@@ -30,6 +30,7 @@ struct task_struct {
   int kernel_esp;
   int quantum;
   int pending_unblocks;
+  int shm_addr[SHM_MAX_PAGES];
   enum process_state state;
 };
 

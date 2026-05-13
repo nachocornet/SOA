@@ -16,15 +16,16 @@ ENTRY (sys_call_table)
 	.long sys_gotoxy	//11
 	.long sys_set_color	//12
 	.long sys_get_color	//13
-	.long sys_ni_syscall	//14
-	.long sys_ni_syscall	//15
-	.long sys_ni_syscall	//16
+	.long sys_shmat	//14
+	.long sys_shmdt	//15
+	.long sys_shmrm	//16
 	.long sys_ni_syscall	//17
 	.long sys_ni_syscall	//18
 	.long sys_ni_syscall	//19
 	.long sys_getpid 		//20
 	.long sys_block			//21
 	.long sys_unblock		//22
+	.long sys_is_frame_free	//23
 
 .global MAX_SYSCALL
 MAX_SYSCALL = (.-sys_call_table)/4

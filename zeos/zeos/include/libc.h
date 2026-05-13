@@ -34,4 +34,13 @@ int gotoxy(int x, int y);
 int set_color(int fg, int bg);
 int get_color(void);
 
+void *shmat(int id, void *addr);
+int shmdt(void *addr);
+int shmrm(int id);
+int is_frame_free(int frame);
+
+/* FPS counter functions */
+void fps_update(void);
+void display_fps(void);
+
 #endif  /* __LIBC_H__ */

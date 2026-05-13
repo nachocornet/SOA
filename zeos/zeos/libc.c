@@ -72,3 +72,45 @@ int strlen(char *a)
   return i;
 }
 
+/* FPS counter */
+static int fps_frames = 0;
+static int fps_last_ticks = -1;
+static int fps_current = 0;
+
+void fps_update(void)
+{
+    int current_ticks = gettime();
+    fps_frames++;
+    
+    /* Initialize on first call */
+    if (fps_last_ticks == -1) {
+        fps_last_ticks = current_ticks;
+    }
+    
+    /* Update FPS every 100ms for more responsiveness */
+    if (current_ticks - fps_last_ticks >= 100) {
+        fps_current = (fps_frames * 1000) / (current_ticks - fps_last_ticks);
+        fps_frames = 0;
+        fps_last_ticks = current_ticks;
+    }
+}
+
+void display_fps(void)
+{
+    char fps_str[16];
+    
+    /* Move to top-left corner and overwrite FPS display */
+    gotoxy(0, 0);
+    
+    /* Write FPS counter */
+    write(1, "FPS: ", 5);
+    itoa(fps_current, fps_str);
+    write(1, fps_str, strlen(fps_str));
+    
+    /* Pad with spaces to clear old numbers */
+    write(1, "    ", 4);
+    
+    /* Move back to (0, 1) to avoid interfering with main output */
+    gotoxy(0, 1);
+}
+

@@ -100,12 +100,28 @@ void set_pe_flag()
 
 
 /* Initializes paging for the system address space */
+extern int shm_refcount[SHM_MAX_PAGES];
+extern int shm_frame[SHM_MAX_PAGES];
+extern int shm_marked[SHM_MAX_PAGES];
+
+void init_shm_refcount()
+{
+    int i;
+    /* Initialize all refcount entries to 0 */
+    for (i = 0; i < SHM_MAX_PAGES; ++i) {
+        shm_refcount[i] = 0;
+    shm_frame[i] = -1;
+    shm_marked[i] = 0;
+    }
+}
+
 void init_mm()
 {
   first_kernel = KERNEL_START>>12;
   last_kernel = ((KERNEL_START + *p_sys_size + *p_usr_size)>>12) + 1;
 
   init_frames();
+  init_shm_refcount();
 
 }
 /***********************************************/
@@ -210,7 +226,7 @@ void free_user_pages( page_table_entry* process_PT )
 /* free_frame - Mark as FREE_FRAME the frame  'frame'.*/
 void free_frame( unsigned int frame )
 {
-    if (frame<TOTAL_PAGES)
+  if (frame<TOTAL_PAGES)
       phys_mem[frame]=FREE_FRAME;
 }
 

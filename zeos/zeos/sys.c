@@ -13,9 +13,13 @@
 
 #include <sched.h>
 
+#include <hardware.h>
+
 
 extern page_table_entry *PT_systemAddress;
 extern void ret_from_fork(void);
+
+extern Byte phys_mem[]; /* from mm.c - bitmap of physical frames */
 
 #define LECTURA 0
 #define ESCRIPTURA 1
@@ -40,6 +44,93 @@ int sys_ni_syscall()
 
 static char sys_buffer[256]; 
 int next_PID = 2;
+int shm_refcount[SHM_MAX_PAGES];  /* Global non-static array for shared memory refcounts */
+int shm_frame[SHM_MAX_PAGES];     /* id -> physical frame mapping */
+int shm_marked[SHM_MAX_PAGES];    /* id marked for removal (shmrm) */
+
+static void shm_zero_frame(unsigned int frame)
+{
+    char *addr;
+    int i;
+
+    map_system_frame(frame);
+    if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
+
+    addr = (char *)system_frame_to_address(frame);
+    for (i = 0; i < PAGE_SIZE; ++i) {
+        addr[i] = 0;
+    }
+
+    unmap_system_frame(frame);
+    if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
+}
+
+static void shm_release_process(struct task_struct *p)
+{
+    int id;
+    page_table_entry *PT;
+
+    if (p == NULL || p->dir_pages_baseAddr == NULL) return;
+
+    PT = get_PT(p);
+    for (id = 0; id < SHM_MAX_PAGES; ++id) {
+        if (p->shm_addr[id] != -1) {
+            unsigned int logical_page = ((unsigned int)p->shm_addr[id] >> 12) - PAG_LOG_INIT_DATA;
+
+            if (logical_page < NUM_PT_ENTRIES) {
+                del_ss_pag(PT, logical_page);
+            }
+            p->shm_addr[id] = -1;
+
+            if (shm_refcount[id] > 0) {
+                shm_refcount[id]--;
+                if (shm_refcount[id] == 0 && shm_frame[id] != -1 && shm_marked[id]) {
+                    /* clear contents then free frame if it was marked for removal */
+                    shm_zero_frame((unsigned int)shm_frame[id]);
+                    free_frame((unsigned int)shm_frame[id]);
+                    shm_frame[id] = -1;
+                    shm_marked[id] = 0;
+                }
+            }
+        }
+    }
+
+    if (read_cr0() & 0x80000000) set_cr3(current()->dir_pages_baseAddr);
+}
+
+static void shm_acquire_process(struct task_struct *p)
+{
+    int id;
+
+    if (p == NULL) return;
+    for (id = 0; id < SHM_MAX_PAGES; ++id) {
+        if (p->shm_addr[id] != -1) {
+            shm_refcount[id]++;
+        }
+    }
+}
+
+static int shm_find_free_slot(page_table_entry *PT, unsigned int preferred_page)
+{
+    unsigned int page;
+    unsigned int first_safe_page = NUM_PAG_DATA + NUM_PAG_CODE + 1;
+
+    if (preferred_page < first_safe_page) {
+        preferred_page = first_safe_page;
+    }
+
+    if (preferred_page < NUM_PT_ENTRIES && PT[preferred_page].bits.present == 0) {
+        return (int)preferred_page;
+    }
+
+    for (page = first_safe_page; page < NUM_PT_ENTRIES; ++page) {
+        if (PT[page].bits.present == 0) {
+            return (int)page;
+        }
+    }
+
+    return -1;
+}
 
 int sys_write(int fd, char *buffer, int size) {
     int error;
@@ -155,6 +246,117 @@ int sys_get_color(void)
     return (int)screen_get_color();
 }
 
+int sys_is_frame_free(int frame)
+{
+    if (frame < 0 || frame >= TOTAL_PAGES) return -22; /* EINVAL */
+    return (phys_mem[frame] == 0) ? 1 : 0;
+}
+
+void *sys_shmat(int id, void *addr)
+{
+    struct task_struct *p;
+    page_table_entry *PT;
+    unsigned int preferred_page;
+    int slot;
+    int frame;
+
+    if (id < 0 || id >= SHM_MAX_PAGES) return (void *)-22;
+    if (addr != NULL && (((unsigned int)addr & (PAGE_SIZE - 1)) != 0)) return (void *)-22;
+
+    p = current();
+    PT = get_PT(p);
+
+    if (p->shm_addr[id] != -1) {
+        return (void *)p->shm_addr[id];
+    }
+
+    preferred_page = (unsigned int)-1;
+    if (addr != NULL) {
+        unsigned int base_page = ((unsigned int)addr >> 12);
+
+        if (base_page >= PAG_LOG_INIT_DATA) {
+            preferred_page = base_page - PAG_LOG_INIT_DATA;
+        }
+    }
+
+    slot = shm_find_free_slot(PT, preferred_page);
+    if (slot < 0) return (void *)-12;
+
+    if (shm_refcount[id] == 0) {
+        frame = alloc_frame();
+        if (frame == -1) return (void *)-12;
+        shm_frame[id] = frame;
+        /* A new allocation cancels any previous mark for removal */
+        shm_marked[id] = 0;
+        shm_zero_frame((unsigned int)frame);
+    }
+
+    if (shm_frame[id] == -1) return (void *)-12;
+
+    set_ss_pag(PT, (unsigned int)slot, (unsigned int)shm_frame[id], 1);
+    p->shm_addr[id] = (int)(((unsigned int)(slot + PAG_LOG_INIT_DATA)) << 12);
+    shm_refcount[id]++;
+
+    /* Flush TLB after updating page table */
+    set_cr3(p->dir_pages_baseAddr);
+
+    return (void *)p->shm_addr[id];
+}
+
+int sys_shmdt(void *addr)
+{
+    struct task_struct *p = current();
+    int id;
+
+    if (addr == NULL) return -22; /* EINVAL */
+    if (((unsigned int)addr & (PAGE_SIZE - 1)) != 0) return -22; /* must be page aligned */
+
+    for (id = 0; id < SHM_MAX_PAGES; ++id) {
+        if (p->shm_addr[id] == (int)addr) {
+            page_table_entry *PT = get_PT(p);
+            unsigned int logical_page = ((unsigned int)addr >> 12) - PAG_LOG_INIT_DATA;
+
+            if (logical_page < NUM_PT_ENTRIES) {
+                del_ss_pag(PT, logical_page);
+            }
+
+            p->shm_addr[id] = -1;
+
+            if (shm_refcount[id] > 0) {
+                shm_refcount[id]--;
+                if (shm_refcount[id] == 0 && shm_frame[id] != -1 && shm_marked[id]) {
+                    shm_zero_frame((unsigned int)shm_frame[id]);
+                    free_frame((unsigned int)shm_frame[id]);
+                    shm_frame[id] = -1;
+                    shm_marked[id] = 0;
+                }
+            }
+
+            /* Flush TLB */
+            set_cr3(p->dir_pages_baseAddr);
+            return 0;
+        }
+    }
+
+    return -22; /* address not found or invalid */
+}
+
+int sys_shmrm(int id)
+{
+    if (id < 0 || id >= SHM_MAX_PAGES) return -22;
+
+    shm_marked[id] = 1;
+
+    /* If no references, clear and free immediately */
+    if (shm_refcount[id] == 0 && shm_frame[id] != -1) {
+        shm_zero_frame((unsigned int)shm_frame[id]);
+        free_frame((unsigned int)shm_frame[id]);
+        shm_frame[id] = -1;
+        shm_marked[id] = 0;
+    }
+    return 0;
+}
+
 int fork_nomem(int *frames, struct task_struct *child) {
     for (int i = 0; i < NUM_PAG_DATA; ++i)
         if (frames[i] != -1) free_frame(frames[i]);
@@ -200,6 +402,14 @@ int sys_fork()
     page_table_entry *PT_parent = get_PT(parent);
     page_table_entry *PT_child  = get_PT(child);
 
+    /* Inherit shared-memory mappings from the parent. */
+    for (i = 0; i < SHM_MAX_PAGES; ++i) {
+        if (parent->shm_addr[i] != -1 && shm_frame[i] != -1) {
+            unsigned int logical_page = (((unsigned int)parent->shm_addr[i]) >> 12) - PAG_LOG_INIT_DATA;
+            set_ss_pag(PT_child, logical_page, (unsigned int)shm_frame[i], 1);
+        }
+    }
+
     /* Share user code pages (read-only). */
     for (i = 0; i < NUM_PAG_CODE; ++i)
         PT_child[NUM_PAG_DATA + i].entry = PT_parent[NUM_PAG_DATA + i].entry;
@@ -233,6 +443,8 @@ int sys_fork()
     child->parent = parent;
     child->pending_unblocks = 0;
     list_add_tail(&child->sibling, &parent->children);
+
+    shm_acquire_process(child);
 
     /*
      * Build the first child kernel context explicitly:
@@ -274,6 +486,8 @@ void sys_exit(void) {
         list_add_tail(&child->sibling, &idle_task->children);
         child->parent = idle_task;
     }
+
+    shm_release_process(p);
 
     // Free user data pages (they are at indices 0 to NUM_PAG_DATA - 1 in the user PT)
     for (int i = 0; i < NUM_PAG_DATA; ++i) {

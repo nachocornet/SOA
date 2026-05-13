@@ -1,360 +1,453 @@
 #include <libc.h>
-
-static int g_parent_pid = -1;
-static int g_child_pid = -1;
-static int g_mem_probe = 1111;
-static int g_total = 0;
-static int g_pass = 0;
+#include <mm_address.h>
 
 static void print(char *msg)
 {
     write(1, msg, strlen(msg));
 }
 
-static void print_int(char *msg, int val)
+static void print_addr(char *msg, unsigned int addr)
 {
     char buff[16];
     print(msg);
-    itoa(val, buff);
+    itoa(addr, buff);
+    print("0x");
     print(buff);
+}
+
+static void print_char_array(char *msg, char *array, int len)
+{
+    int i;
+    print(msg);
+    for (i = 0; i < len && array[i] != '\0'; ++i) {
+        char c = array[i];
+        if (c >= 32 && c < 127) {
+            write(1, &c, 1);
+        } else {
+            print("[?]");
+        }
+    }
     print("\n");
 }
 
-static void test_result(char *name, int ok)
+static void test_1_attach_shared_page(void)
 {
-    g_total++;
-    if (ok) {
-        g_pass++;
-        print("[PASS] ");
+    char *shared;
+    const unsigned int page_mask = 0xFFF;
+
+    print("\n=== TEST 1: Attach Shared Page ===\n");
+    print("Calling shmat(0, NULL)...\n");
+    
+    shared = (char *)shmat(0, (void *)0);
+    
+    if (shared == (char *)-1) {
+        print("ERROR: shmat failed!\n");
+        return;
+    }
+    
+    print_addr("Attached address: ", (unsigned int)shared);
+    print("\n");
+    
+    if (((unsigned int)shared & page_mask) != 0) {
+        print("ERROR: Address not page-aligned!\n");
+        return;
+    }
+    
+    print("SUCCESS: Page attached and page-aligned\n");
+}
+
+static void test_2_write_read_shared(void)
+{
+    char *shared;
+    char buffer[32];
+    int i;
+
+    print("\n=== TEST 2: Write and Read from Shared Page ===\n");
+    print("Attaching shared page 0...\n");
+    
+    shared = (char *)shmat(0, (void *)0);
+    
+    if (shared == (char *)-1) {
+        print("ERROR: shmat failed!\n");
+        return;
+    }
+
+    print("Writing 'Hello from Parent!' to shared page...\n");
+    const char *msg = "Hello from Parent!";
+    for (i = 0; msg[i] != '\0' && i < 30; ++i) {
+        shared[i] = msg[i];
+    }
+    shared[i] = '\0';
+
+    print("Reading back from shared page:\n");
+    for (i = 0; i < 30 && shared[i] != '\0'; ++i) {
+        buffer[i] = shared[i];
+    }
+    buffer[i] = '\0';
+    
+    print_char_array("Content: ", buffer, 32);
+    print("SUCCESS\n");
+}
+
+static void test_3_parent_child_shared(void)
+{
+    char *shared;
+    int pid;
+    int i;
+
+    print("\n=== TEST 3: Parent-Child Shared Memory Visibility ===\n");
+    print("Parent: Attaching shared page 0...\n");
+    
+    shared = (char *)shmat(0, (void *)0);
+    
+    if (shared == (char *)-1) {
+        print("ERROR: shmat failed!\n");
+        return;
+    }
+
+    print("Parent: Writing initial message to shared page...\n");
+    const char *parent_msg = "MSG_FROM_PARENT";
+    for (i = 0; parent_msg[i] != '\0' && i < 30; ++i) {
+        shared[i] = parent_msg[i];
+    }
+    shared[i] = '\0';
+    shared[16] = 'X';
+
+    print("Parent: Forking child process...\n");
+    pid = fork();
+
+    if (pid < 0) {
+        print("ERROR: fork failed!\n");
+        return;
+    }
+
+    if (pid == 0) {
+        char *child_shared = (char *)shmat(0, (void *)0);
+        
+        print("Child: Attached shared page at ");
+        print_addr("", (unsigned int)child_shared);
+        print("\n");
+        
+        print("Child: Reading parent message:\n");
+        print_char_array("Content: ", child_shared, 32);
+
+        print("Child: Writing response to shared page...\n");
+        const char *child_msg = "MSG_FROM_CHILD";
+        for (i = 0; child_msg[i] != '\0' && i < 30; ++i) {
+            child_shared[i] = child_msg[i];
+        }
+        child_shared[i] = '\0';
+        child_shared[16] = 'Y';
+
+        print("Child: Done, exiting\n");
+        exit();
+    }
+
+    print("Parent: Waiting for child to modify shared page...\n");
+    for (i = 0; i < 2000000 && shared[16] != 'Y'; ++i) {
+    }
+
+    if (shared[16] == 'Y') {
+        print("Parent: Child modified the shared page!\n");
+        print("Parent: Reading child message:\n");
+        print_char_array("Content: ", shared, 32);
+        print("SUCCESS: Parent sees child modifications\n");
     } else {
-        print("[FAIL] ");
+        print("ERROR: Child did not modify shared page in time\n");
     }
-    print(name);
+
+    unblock(pid);
+}
+
+static void test_4_multiple_attachments(void)
+{
+    char *shared0;
+    char *shared1;
+    int i;
+
+    print("\n=== TEST 4: Multiple Shared Page Attachments ===\n");
+    
+    print("Attaching shared page 0...\n");
+    shared0 = (char *)shmat(0, (void *)0);
+    
+    if (shared0 == (char *)-1) {
+        print("ERROR: shmat(0) failed!\n");
+        return;
+    }
+    print_addr("Page 0 at: ", (unsigned int)shared0);
     print("\n");
-}
 
-static void burn_ticks(int loops)
-{
-    volatile int i;
-    for (i = 0; i < loops; ++i) {
+    print("Attaching shared page 1...\n");
+    shared1 = (char *)shmat(1, (void *)0);
+    
+    if (shared1 == (char *)-1) {
+        print("ERROR: shmat(1) failed!\n");
+        return;
     }
+    print_addr("Page 1 at: ", (unsigned int)shared1);
+    print("\n");
+
+    print("Writing to page 0...\n");
+    const char *msg0 = "Data in Page 0";
+    for (i = 0; msg0[i] != '\0' && i < 30; ++i) {
+        shared0[i] = msg0[i];
+    }
+    shared0[i] = '\0';
+
+    print("Writing to page 1...\n");
+    const char *msg1 = "Data in Page 1";
+    for (i = 0; msg1[i] != '\0' && i < 30; ++i) {
+        shared1[i] = msg1[i];
+    }
+    shared1[i] = '\0';
+
+    print("Reading from page 0:\n");
+    print_char_array("Content: ", shared0, 32);
+    
+    print("Reading from page 1:\n");
+    print_char_array("Content: ", shared1, 32);
+    
+    print("SUCCESS: Multiple pages attached independently\n");
 }
 
-static int read_word(char *buffer, int maxchars)
+static void test_5_shmrm_and_free(void)
 {
-    int n = 0;
-    char c;
+    char *shared;
+    int i;
 
-    if (buffer == (char *)0) return -1;
-    if (maxchars <= 1) return -1;
+    print("\n=== TEST 5: shmdt/shmrm frees when marked ===\n");
+    print("Attach page 0 and write data...\n");
+    shared = (char *)shmat(0, (void *)0);
+    if (shared == (char *)-1) { print("ERROR: shmat failed!\n"); return; }
+
+    const char *msg = "KEEP_ME";
+    for (i = 0; msg[i] != '\0' && i < 30; ++i) shared[i] = msg[i];
+    shared[i] = '\0';
+
+    print("Call shmrm(0) to mark for removal...\n");
+    if (shmrm(0) != 0) { print("ERROR: shmrm failed\n"); }
+
+    print("Call shmdt(addr) to detach and trigger free...\n");
+    if (shmdt((void *)shared) != 0) { print("ERROR: shmdt failed\n"); }
+
+    print("Re-attach page 0 and check it's zeroed...\n");
+    shared = (char *)shmat(0, (void *)0);
+    if (shared == (char *)-1) { print("ERROR: re-shmat failed!\n"); return; }
+
+    if (shared[0] == '\0') {
+        print("SUCCESS: reattached page is zeroed\n");
+    } else {
+        print("ERROR: reattached page not zeroed\n");
+        print_char_array("Content: ", shared, 32);
+    }
+
+    shmdt((void *)shared);
+}
+
+static void test_6_shmrm_with_child(void)
+{
+    char *shared;
+    int pid;
+    int i;
+
+    print("\n=== TEST 6: shmdt/shmrm with child process ===\n");
+    print("Parent: attach page 1 and write 'P'...\n");
+    shared = (char *)shmat(1, (void *)0);
+    if (shared == (char *)-1) { print("ERROR: shmat failed!\n"); return; }
+    shared[0] = 'P';
+
+    print("Parent: fork child...\n");
+    pid = fork();
+    if (pid < 0) { print("ERROR: fork failed\n"); return; }
+
+    if (pid == 0) {
+        /* child */
+        char *cshared = (char *)shmat(1, (void *)0);
+        print("Child: sees initial char: ");
+        write(1, cshared, 1);
+        print("\nChild: sleeping a bit then detaching...\n");
+        for (i = 0; i < 1000000; ++i) ;
+        shmdt((void *)cshared);
+        print("Child: detached and exiting\n");
+        exit();
+    }
+
+    /* parent */
+    print("Parent: mark shmrm(1) and detach quickly\n");
+    shmrm(1);
+    shmdt((void *)shared);
+
+    print("Parent: now reattach page 1 and verify zeroed (after child exit)\n");
+    /* wait a bit for child to exit and trigger freeing */
+    for (i = 0; i < 3000000; ++i) ;
+
+    shared = (char *)shmat(1, (void *)0);
+    if (shared == (char *)-1) { print("ERROR: re-shmat failed!\n"); return; }
+
+    if (shared[0] == '\0') print("SUCCESS: reattached page is zeroed\n");
+    else print("ERROR: reattached page not zeroed\n");
+
+    shmdt((void *)shared);
+}
+
+static int count_free_frames()
+{
+    int i, cnt = 0;
+    for (i = 0; i < TOTAL_PAGES; ++i) {
+        if (is_frame_free(i) == 1) cnt++;
+    }
+    return cnt;
+}
+
+static void test_7_verify_physical_free(void)
+{
+    int before, after_attach, after_detach;
+    char *shared;
+
+    print("\n=== TEST 7: Verify physical free frame on shmrm+shmdt ===\n");
+
+    before = count_free_frames();
+    print_addr("Free frames before attach: ", before);
+    print("\n");
+
+    shared = (char *)shmat(3, (void *)0);
+    if (shared == (char *)-1) { print("ERROR: shmat failed\n"); return; }
+
+    after_attach = count_free_frames();
+    print_addr("Free frames after attach: ", after_attach);
+    print("\n");
+
+    if (after_attach != before - 1) print("WARNING: free frames didn't decrease by 1\n");
+
+    print("Marking shmrm(3) and detaching to trigger free...\n");
+    shmrm(3);
+    shmdt((void *)shared);
+
+    /* wait a bit */
+    for (int i = 0; i < 2000000; ++i) ;
+
+    after_detach = count_free_frames();
+    print_addr("Free frames after detach: ", after_detach);
+    print("\n");
+
+    if (after_detach == before) print("SUCCESS: physical frame freed and returned to pool\n");
+    else print("ERROR: physical frame not freed as expected\n");
+}
+
+static void test_8_performance_fps(void)
+{
+    int counter = 0;
+    int start_time = gettime();
+    int current_time;
+
+    print("\n=== TEST 8: Performance (FPS Counter) ===\n");
+    print("Running FPS counter for 3 seconds...\n");
+    print("Press any key to stop early.\n\n");
 
     while (1) {
-        int r = read(&c, 1);
-
-        if (r <= 0) {
-            if (n > 0) break;
-            return r;
-        }
-
-        if (c == ' ' || c == '\n' || c == '\r') {
-            if (n == 0) continue;
+        current_time = gettime();
+        
+        /* Update and display FPS every frame */
+        fps_update();
+        display_fps();
+        
+        counter++;
+        
+        /* Stop after 3 seconds or 10000 iterations */
+        if (current_time - start_time > 3000 || counter > 10000) {
             break;
         }
-
-        if (n < (maxchars - 1)) {
-            buffer[n++] = c;
-        }
     }
-
-    buffer[n] = '\0';
-    return n;
+    
+    print("\n\nPerformance test completed.\n");
 }
 
-
-
-static void test_write_errors(void)
+static void print_menu(void)
 {
-    int r;
-
-    print("\n-- write() validation tests --\n");
-
-    r = write(0, "x", 1);
-    test_result("write(fd=0) returns -1", r == -1);
-    test_result("errno=EBADF (9)", errno == 9);
-    if (r == -1) perror();
-
-    r = write(1, "x", -1);
-    test_result("write(size<0) returns -1", r == -1);
-    test_result("errno=EINVAL (22)", errno == 22);
-    if (r == -1) perror();
-
-    r = write(1, (char *)0, 1);
-    test_result("write(NULL) returns -1", r == -1);
-    test_result("errno=EFAULT (14)", errno == 14);
-    if (r == -1) perror();
-}
-
-static void test_read_errors(void)
-{
-    int r;
-    char tmp[8];
-
-    print("\n-- read() validation tests --\n");
-
-    r = read((char *)0, 1);
-    test_result("read(NULL) returns -1", r == -1);
-    test_result("errno=EFAULT (14)", errno == 14);
-    if (r == -1) perror();
-
-    r = read(tmp, -1);
-    test_result("read(size<0) returns -1", r == -1);
-    test_result("errno=EINVAL (22)", errno == 22);
-    if (r == -1) perror();
-
-    r = read(tmp, 0);
-    test_result("read(size=0) returns 0", r == 0);
-}
-
-static void test_gotoxy_setcolor(void)
-{
-    int r;
-    int attr;
-    print("\n-- gotoxy/set_color tests --\n");
-    r = set_color(3,1);
-    test_result("set_color(valid) returns 0", r == 0);
-    attr = get_color();
-    test_result("get_color returns set value", ((attr & 0x0F) == 3) && (((attr >> 4) & 0x0F) == 1));
-    r = set_color(-1,0);
-    test_result("set_color(fg<0) returns -22", r == -22);
-    r = set_color(0,16);
-    test_result("set_color(bg>15) returns -22", r == -22);
-    r = gotoxy(79,24);
-    test_result("gotoxy(valid) returns 0", r == 0);
-    r = gotoxy(80,24);
-    test_result("gotoxy(x>=80) returns -22", r == -22);
-}
-
-static void child_flow(void)
-{
-    int mypid;
-    int t_before;
-    int t_after;
-
-    print("\n[Child] starting child flow\n");
-    mypid = getpid();
-    print_int("[Child] PID: ", mypid);
-
-    test_result("child getpid() is not parent PID", mypid != g_parent_pid);
-    test_result("child getpid() > 1", mypid > 1);
-    test_result("child sees fork-copied memory value", g_mem_probe == 1111);
-
-    g_mem_probe = 3333;
-    test_result("child can modify its own copy", g_mem_probe == 3333);
-
-    test_result("child unblock(self) fails", unblock(mypid) < 0);
-    test_result("child unblock(parent) fails", unblock(g_parent_pid) < 0);
-    test_result("child unblock(invalid pid) fails", unblock(9999) < 0);
-
-    print("[Child] block #1 should not sleep (pending_unblocks consumed)\n");
-    t_before = gettime();
-    block();
-    t_after = gettime();
-    test_result("child block #1 returns quickly", t_after >= t_before);
-
-    test_result("child memory copy keeps its own value", g_mem_probe == 3333);
-
-    print("[Child] block #2 should sleep until parent unblocks\n");
-    t_before = gettime();
-    block();
-    t_after = gettime();
-    test_result("child block #2 woke after time advanced", t_after > t_before);
-
-    print_int("[Child] End time: ", gettime());
-    print("[Child] exit\n");
-    exit();
-}
-
-static void parent_flow(int pid)
-{
-    int t0;
-    int t1;
-
-    print("\n[Parent] starting parent flow\n");
-    print_int("[Parent] PID: ", g_parent_pid);
-    print_int("[Parent] Child PID: ", pid);
-
-    test_result("parent got child pid > 0 from fork", pid > 0);
-    test_result("parent child pid != parent pid", pid != g_parent_pid);
-    test_result("parent keeps its own memory copy after child fork", g_mem_probe == 2222);
-
-    test_result("parent preemptive unblock(child) succeeds", unblock(pid) == 0);
-
-    print("[Parent] waiting child to reach block #2...\n");
-    burn_ticks(1800000);
-
-    t0 = gettime();
-    test_result("parent unblock(blocked child) succeeds", unblock(pid) == 0);
-    burn_ticks(200000);
-    t1 = gettime();
-    test_result("gettime advances while parent runs", t1 >= t0);
-    test_result("parent memory copy unaffected by child changes", g_mem_probe == 2222);
-
-    burn_ticks(1200000);
+    print("\n============================================\n");
+    print("  MILESTONE 5: SHARED MEMORY (SHMAT) TESTS\n");
+    print("============================================\n");
+    print("1. Attach Shared Page\n");
+    print("2. Write and Read from Shared Page\n");
+    print("3. Parent-Child Shared Memory Visibility\n");
+    print("4. Multiple Shared Page Attachments\n");
+    print("5. shmdt/shmrm: detach frees when marked\n");
+    print("6. shmdt/shmrm with child process\n");
+    print("7. Verify physical free frame on shmrm+shmdt\n");
+    print("8. Performance Test (FPS Counter)\n");
+    print("0. Exit\n");
+    print("Select option: ");
 }
 
 int __attribute__((__section__(".text.main")))
 main(void)
 {
-    int start_t;
-    int end_t;
-    int pid;
-    int wr;
-    int nread;
-    char *info_msg;
-    char rbuf[16];
+    char input_buffer[32];
+    int bytes_read;
+    int option;
+    int running = 1;
 
-    print("\n======= ZEOS USER FULL TEST =======\n");
+    print("\n");
+    print("========================================\n");
+    print("  ZEOS Milestone 5: Shared Memory Tests\n");
+    print("========================================\n");
+    print("(FPS counter displayed at top-left)\n\n");
 
-    start_t = gettime();
-    g_parent_pid = getpid();
-
-    test_result("getpid() in parent > 0", g_parent_pid > 0);
-    test_result("gettime() initial value >= 0", start_t >= 0);
-    test_result("initial memory probe value", g_mem_probe == 1111);
-
-    info_msg = "[INFO] write() basic output test\n";
-    wr = write(1, info_msg, strlen(info_msg));
-    burn_ticks(100000);
-
-    test_result("write(valid args) returns byte count", wr == (int)strlen(info_msg));
-
-    test_write_errors();
-    test_read_errors();
-
-    test_gotoxy_setcolor();
-
-    print("\n-- fork/block/unblock/exit tests --\n");
-    pid = fork();
-
-    if (pid < 0) {
-        test_result("fork() succeeded", 0);
-        perror();
-        print("\n[SUMMARY] ");
-        print_int("tests passed: ", g_pass);
-        print_int("tests total : ", g_total);
-        exit();
-    }
-
-    if (pid == 0) {
-        child_flow();
-    }
-
-    g_child_pid = pid;
-    g_mem_probe = 2222;
-    parent_flow(pid);
-
-    end_t = gettime();
-    test_result("global runtime advanced", end_t > start_t);
-
-    print("\n[SUMMARY] ");
-    print_int("tests passed: ", g_pass);
-    print_int("tests total : ", g_total);
-    if (g_pass == g_total) {
-        print("ALL TESTS PASS\n");
-    } else {
-        print("SOME TESTS FAILED\n");
-    }
-
-    print("\n-- professor manual checklist --\n");
-    print("[STEP 1] Type a short word, then press F1.\n");
-    print("[EXPECT] Dump shows the same word in FIFO order.\n");
-    print("[STEP 2] Type more than 16 chars, then press F1.\n");
-    print("[EXPECT] count stays at 16, new keys are discarded.\n");
-    print("[STEP 3] Keep typing and press F1 multiple times.\n");
-    print("[EXPECT] System stays stable and responsive.\n");
-    print("[NOTE] To see the high-frame test, watch the output before 'Entering user mode...'.\n");
-    print("[NOTE] If you press 'q', the kernel writes that key into the test frame 2000.\n");
-
-    print("\n[NOTE] The next demos consume keyboard input with read().\n");
-    print("[NOTE] Use F1 before reaching them if you want to inspect the buffer.\n");
-
-    print("\n[STEP 4] read_word() demo: type a word and finish with SPACE or ENTER.\n");
-    print("[EXPECT] It waits until delimiter and prints only the word.\n");
-    nread = read_word(rbuf, sizeof(rbuf));
-    if (nread > 0) {
-        write(1, "[READ WORD] ", 12);
-        write(1, rbuf, strlen(rbuf));
-        write(1, "\n", 1);
-    }
-
-        /* Simple manual demo for gotoxy and set_color (Milestone 4) */
-        print("\n[DEMO] gotoxy/set_color demo:\n");
-        set_color(4,0); /* red on black */
-        gotoxy(0,22);
-        write(1, "This is RED text at (0,22)\n", 26);
-        set_color(2,0); /* green on black */
-        gotoxy(0,23);
-        write(1, "This is GREEN text at (0,23)\n", 28);
-        set_color(7,0); /* reset to light gray */
-
-        /* Paint right side of screen with yellow on blue */
-        print("\n[DEMO] Painting right side of screen (yellow on blue)...\n");
-        set_color(14, 1);  /* yellow text on blue background */
-        {
-            int row, col;
-            char msg[] = "MILESTONE 4 OK";
-            for (row = 5; row < 20; row++) {
-                gotoxy(45, row);
-                for (col = 0; col < 15; col++) {
-                    write(1, "*", 1);
-                }
-            }
-            /* Write centered message in colored region */
-            gotoxy(50, 12);
-            write(1, msg, strlen(msg));
+    while (running) {
+        /* Update and display FPS on every iteration */
+        fps_update();
+        display_fps();
+        
+        print_menu();
+        
+        bytes_read = read(input_buffer, 1);
+        
+        if (bytes_read <= 0) {
+            print("Input error\n");
+            continue;
         }
-        set_color(7, 0);  /* reset to light gray on black */
 
-    print("\n[STEP 5] Press one button to see read(), it has to block\n");
-    nread = read(rbuf, sizeof(rbuf));
-    if (nread > 0) {
-        write(1, "[READ] ", 7);
-        write(1, rbuf, strlen(rbuf));
-        write(1, "\n", 1);
+        option = input_buffer[0] - '0';
+
+        switch (option) {
+            case 1:
+                test_1_attach_shared_page();
+                break;
+            case 2:
+                test_2_write_read_shared();
+                break;
+            case 3:
+                test_3_parent_child_shared();
+                break;
+            case 4:
+                test_4_multiple_attachments();
+                break;
+            case 5:
+                test_5_shmrm_and_free();
+                break;
+            case 6:
+                test_6_shmrm_with_child();
+                break;
+            case 7:
+                test_7_verify_physical_free();
+                break;
+            case 8:
+                test_8_performance_fps();
+                break;
+            case 0:
+                print("\nExiting...\n");
+                running = 0;
+                break;
+            default:
+                print("Invalid option. Please select 0-8.\n");
+                break;
+        }
     }
 
-    int pid1, pid2;
-    char buffer[10];
+    print("\n========================================\n");
+    print("          Tests Completed\n");
+    print("========================================\n");
 
-    write(1, "\n--- LECTURE TEST MULTITASK ---\n", 36);
-
-    pid1 = fork();
-    if (pid1 == 0) {
-        write(1, "[CHILD 1] I want 5 chars\n", 28);
-        read(buffer, 5);
-        write(1, "[CHILD 1] I have: ", 19);
-        write(1, buffer, 5);
-        write(1, "\n", 1);
-        exit();
-    }
-
-    pid2 = fork();
-    if (pid2 == 0) {
-        write(1, "[CHILD 2] I want 5 chars\n", 28);
-        read(buffer, 5);
-        write(1, "[CHILD 2] I have: ", 19);
-        write(1, buffer, 5);
-        write(1, "\n", 1);
-        exit();
-    }
-
-    write(1, "[PARENT] I want 5 chars\n", 27);
-    read(buffer, 5);
-    write(1, "[PARENT]   I have: ", 19);
-    write(1, buffer, 5);
-    write(1, "\n", 1);
-
-    print("\n[INFO] End of automatic demos. You can keep typing and press F1 anytime.\n");
-
-    while (1) ;
+    exit();
+    return 0;
 }

@@ -224,6 +224,145 @@ fi_get_color:
     popl %ebp
     ret
 
+ENTRY(shmat)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+    movl 8(%ebp), %edx   // id -> EDX
+    movl 12(%ebp), %ecx  // addr -> ECX
+
+    movl $14, %eax       // 14 = syscall shmat
+
+    pushl %ecx
+    pushl %edx
+
+    pushl $return_shmat
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_shmat:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ecx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_shmat
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_shmat:
+    popl %ebp
+    ret
+
+ENTRY(shmdt)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+    movl 8(%ebp), %edx   // addr -> EDX
+
+    movl $15, %eax       // 15 = syscall shmdt
+
+    pushl %edx
+
+    pushl $return_shmdt
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_shmdt:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_shmdt
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_shmdt:
+    popl %ebp
+    ret
+
+ENTRY(shmrm)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+    movl 8(%ebp), %edx   // id -> EDX
+
+    movl $16, %eax       // 16 = syscall shmrm
+
+    pushl %edx
+
+    pushl $return_shmrm
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_shmrm:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_shmrm
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_shmrm:
+    popl %ebp
+    ret
+
+ENTRY(is_frame_free)
+    pushl %ebp
+    movl %esp, %ebp
+    pushl %ebx
+    movl 8(%ebp), %edx   // frame -> EDX
+
+    movl $23, %eax       // 23 = syscall is_frame_free
+
+    pushl %edx
+
+    pushl $return_is_frame_free
+    pushl %ebp
+    movl %esp, %ebp
+
+    sysenter
+
+return_is_frame_free:
+    popl %ebp
+    addl $4, %esp
+
+    popl %edx
+    popl %ebx
+
+    cmpl $0, %eax
+    jge fi_is_frame_free
+
+    negl %eax
+    movl %eax, errno
+    movl $-1, %eax
+
+fi_is_frame_free:
+    popl %ebp
+    ret
+
 
 ENTRY(getpid)
     pushl %ebp

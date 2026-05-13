@@ -51,6 +51,7 @@ struct task_struct *alloc_task_struct(void)
 	tu->task.kernel_esp = 0;
 	tu->task.quantum = 0;
 	tu->task.pending_unblocks = 0;
+	for (int i = 0; i < SHM_MAX_PAGES; ++i) tu->task.shm_addr[i] = -1;
 	tu->task.state = ST_FREE;
 
 	active_tasks++;
