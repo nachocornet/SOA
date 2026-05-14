@@ -77,6 +77,8 @@ static int fps_frames = 0;
 static int fps_last_ticks = -1;
 static int fps_current = 0;
 
+#define TICKS_PER_SECOND 18
+
 void fps_update(void)
 {
     int current_ticks = gettime();
@@ -87,9 +89,9 @@ void fps_update(void)
         fps_last_ticks = current_ticks;
     }
     
-    /* Update FPS every 100ms for more responsiveness */
-    if (current_ticks - fps_last_ticks >= 100) {
-        fps_current = (fps_frames * 1000) / (current_ticks - fps_last_ticks);
+    /* Update FPS every second worth of clock ticks */
+    if (current_ticks - fps_last_ticks >= TICKS_PER_SECOND) {
+        fps_current = (fps_frames * TICKS_PER_SECOND) / (current_ticks - fps_last_ticks);
         fps_frames = 0;
         fps_last_ticks = current_ticks;
     }

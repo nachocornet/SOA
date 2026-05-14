@@ -141,7 +141,6 @@ void allocate_DIR(struct task_struct *t) {
 void cpu_idle(void)
 {
 	__sti();
-	printk("Idle task running...\n");
 	while(1)
 	{
 	}

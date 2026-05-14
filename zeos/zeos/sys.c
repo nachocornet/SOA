@@ -199,6 +199,9 @@ int sys_read(char *buffer, int maxchars)
         if (keyboard_buffer_pop(&c) == 0) {
             copy_to_user(&c, buffer + bytes_read, 1);
             bytes_read++;
+            if (c == '\n' || c == '\r') {
+                break;
+            }
         } else {
             keyboard_block_current_reader();
         }
